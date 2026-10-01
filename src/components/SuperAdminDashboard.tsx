@@ -234,7 +234,8 @@ export default function SuperAdminDashboard({
       } catch (brandErr) {
         console.warn('Config branding update note:', brandErr);
       }
-      setEditFeedback('Theme & branding allotted successfully!');
+      await loadTenantStats();
+      setEditFeedback('Theme & branding updated! Admin ownership transferred cleanly.');
       setTimeout(() => {
         setEditingTenant(null);
         setEditFeedback('');
@@ -349,11 +350,11 @@ export default function SuperAdminDashboard({
               >
                 <div className="flex items-center justify-between mb-1">
                   <span
-                    className="w-4 h-4 rounded-full border border-black flex-shrink-0"
+                    className="w-4 h-4 rounded-full border border-[var(--nb-ink)] flex-shrink-0"
                     style={{ background: preset.heroBg }}
                   />
                   <span
-                    className="w-2.5 h-2.5 rounded-full border border-black flex-shrink-0"
+                    className="w-2.5 h-2.5 rounded-full border border-[var(--nb-ink)] flex-shrink-0"
                     style={{ background: preset.accent }}
                   />
                 </div>
@@ -374,13 +375,13 @@ export default function SuperAdminDashboard({
           style={{
             background: currentConfig.heroBg,
             color: currentConfig.heroFg,
-            border: '2px solid #1A1A1A',
-            boxShadow: '3px 3px 0 #1A1A1A'
+            border: '2px solid var(--nb-ink)',
+            boxShadow: 'var(--shadow-hard)'
           }}
         >
           <div className="flex items-center justify-between">
-            <span className="text-[9px] font-mono font-extrabold px-2 py-0.5 rounded bg-white text-black border border-black shadow-[1.5px_1.5px_0_#000] uppercase">
-              ⚡ {shortCode || 'AIML'} · LIVE PREVIEW
+            <span className="text-[9px] font-mono font-extrabold px-2 py-0.5 rounded bg-[var(--nb-surface)] text-[var(--nb-content)] border border-[var(--nb-ink)] shadow-[1.5px_1.5px_0_var(--nb-ink)] uppercase">
+              ⚡ {shortCode || 'ORG'} · LIVE PREVIEW
             </span>
             <span className="text-[9px] font-mono font-bold uppercase tracking-wider opacity-85">
               {currentConfig.name}
@@ -396,12 +397,12 @@ export default function SuperAdminDashboard({
             </p>
           </div>
 
-          <div className="pt-1.5 flex items-center justify-between border-t border-black/20">
-            <span className="text-[9px] font-mono opacity-80 uppercase truncate max-w-[200px]">
+          <div className="pt-1.5 flex items-center justify-between border-t border-[var(--nb-divider)] gap-2 min-w-0">
+            <span className="text-[9px] font-mono opacity-80 uppercase truncate flex-1 min-w-0">
               🏛 {institution || 'Academic SaaS Ecosystem'}
             </span>
             <span
-              className="text-[9px] font-mono font-black uppercase px-2.5 py-0.5 rounded border border-black shadow-[1.5px_1.5px_0_#000]"
+              className="text-[9px] font-mono font-black uppercase px-2 py-0.5 rounded border border-[var(--nb-ink)] shadow-[1.5px_1.5px_0_var(--nb-ink)] shrink-0"
               style={{ background: currentConfig.accent, color: currentConfig.accentFg }}
             >
               Access Portal →
@@ -417,26 +418,26 @@ export default function SuperAdminDashboard({
       
       {/* ── TOP MASTER BAR ── */}
       <header className="border-b-[2.5px] border-[var(--nb-ink)] bg-[var(--nb-surface)] sticky top-0 z-30 shadow-[0_2px_0_var(--nb-ink)]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-md bg-[var(--nb-yellow)] border-2 border-[var(--nb-ink)] flex items-center justify-center shadow-[2px_2px_0_var(--nb-ink)]">
-              <Layers className="w-5 h-5 text-neutral-900" />
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 h-16 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-md bg-[var(--nb-yellow)] border-2 border-[var(--nb-ink)] flex items-center justify-center shadow-[2px_2px_0_var(--nb-ink)] shrink-0">
+              <Layers className="w-4 h-4 sm:w-5 sm:h-5 text-neutral-900" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-display font-black text-lg tracking-wider text-[var(--nb-content)]">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <span className="font-display font-black text-base sm:text-lg tracking-wider text-[var(--nb-content)]">
                   NOTX
                 </span>
-                <span className="nb-pill-coral text-[9px] font-mono font-bold uppercase py-0.5 px-1.5">
+                <span className="nb-pill-coral text-[8px] sm:text-[9px] font-mono font-bold uppercase py-0.5 px-1.5 shrink-0">
                   SAAS ROOT
                 </span>
               </div>
-              <p className="text-[10px] font-mono text-[var(--nb-secondary)]">Multi-Tenant Platform Control Center</p>
+              <p className="text-[9px] sm:text-[10px] font-mono text-[var(--nb-secondary)] truncate hidden xs:block">Multi-Tenant Platform Control Center</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-2 px-3 py-1 bg-[var(--nb-surface-accent)] rounded border border-[var(--nb-ink)]">
+          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+            <div className="hidden md:flex items-center gap-2 px-3 py-1 bg-[var(--nb-surface-accent)] rounded border border-[var(--nb-ink)]">
               <ShieldCheck className="w-4 h-4 text-emerald-500" />
               <span className="text-xs font-mono font-bold truncate max-w-[200px]">
                 {currentUser.email}
@@ -447,7 +448,7 @@ export default function SuperAdminDashboard({
                 setIsValidationModalOpen(true);
                 handleRunValidation();
               }}
-              className="nb-btn-ghost text-xs font-bold uppercase py-2 px-3 flex items-center gap-1.5 cursor-pointer bg-[var(--nb-surface)]"
+              className="nb-btn-ghost text-xs font-bold uppercase py-2 px-2.5 sm:px-3 flex items-center gap-1.5 cursor-pointer bg-[var(--nb-surface)]"
               style={{ border: '2px solid var(--nb-ink)' }}
               title="Run Automated Multi-Tenant & Security Verification"
             >
@@ -456,14 +457,15 @@ export default function SuperAdminDashboard({
             </button>
             <button
               onClick={() => setIsAddModalOpen(true)}
-              className="nb-btn text-xs font-bold uppercase py-2 px-3.5 flex items-center gap-1.5 cursor-pointer"
+              className="nb-btn text-xs font-bold uppercase py-2 px-2.5 sm:px-3.5 flex items-center gap-1.5 cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              <span>Add Tenant</span>
+              <span className="hidden sm:inline">Add Tenant</span>
+              <span className="sm:hidden">Add</span>
             </button>
             <button
               onClick={onLogout}
-              className="nb-btn-ghost text-xs font-bold uppercase py-2 px-3 flex items-center gap-1.5 cursor-pointer text-rose-500 hover:text-rose-600"
+              className="nb-btn-ghost text-xs font-bold uppercase py-2 px-2.5 sm:px-3 flex items-center gap-1.5 cursor-pointer text-rose-500 hover:text-rose-600"
               title="Sign Out"
             >
               <LogOut className="w-4 h-4" />
@@ -489,17 +491,17 @@ export default function SuperAdminDashboard({
 
         {/* Banner */}
         <div 
-          className="p-6 rounded-lg bg-[var(--nb-yellow)] text-neutral-900 flex flex-col md:flex-row md:items-center justify-between gap-4"
+          className="p-4 sm:p-6 rounded-lg bg-[var(--nb-yellow)] text-neutral-900 flex flex-col md:flex-row md:items-center justify-between gap-4"
           style={{ border: '2.5px solid var(--nb-ink)', boxShadow: '4px 4px 0 var(--nb-ink)' }}
         >
           <div className="space-y-1.5">
             <div className="flex items-center gap-2">
-              <span className="nb-pill-pink text-[10px] font-mono font-bold uppercase px-2 py-0.5">
+              <span className="nb-pill-pink text-[9px] sm:text-[10px] font-mono font-bold uppercase px-2 py-0.5">
                 SUPER ADMIN SESSION
               </span>
-              <span className="text-xs font-mono font-bold">Google Auth Verified</span>
+              <span className="text-[11px] sm:text-xs font-mono font-bold">Google Auth Verified</span>
             </div>
-            <h1 className="font-display font-black text-2xl sm:text-3xl tracking-tight">
+            <h1 className="font-display font-black text-xl sm:text-2xl md:text-3xl tracking-tight">
               Manage Tenants & Associations
             </h1>
             <p className="text-xs sm:text-sm font-medium text-neutral-800 max-w-xl">
@@ -507,22 +509,22 @@ export default function SuperAdminDashboard({
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
-            <div className="bg-white/90 border-2 border-black rounded-md p-3 text-center min-w-[100px] shadow-[2px_2px_0_#000]">
-              <div className="font-display text-2xl font-black">{tenants.length}</div>
-              <div className="text-[9px] font-mono font-bold uppercase">Total Tenants</div>
+          <div className="grid grid-cols-3 gap-2 w-full md:w-auto shrink-0">
+            <div className="bg-[var(--nb-surface)] border-2 border-[var(--nb-ink)] rounded-md p-2.5 sm:p-3 text-center min-w-0 sm:min-w-[100px] shadow-[2px_2px_0_var(--nb-ink)]">
+              <div className="font-display text-xl sm:text-2xl font-black">{tenants.length}</div>
+              <div className="text-[8px] sm:text-[9px] font-mono font-bold uppercase truncate">Total Tenants</div>
             </div>
-            <div className="bg-white/90 border-2 border-black rounded-md p-3 text-center min-w-[100px] shadow-[2px_2px_0_#000]">
-              <div className="font-display text-2xl font-black text-emerald-600">
+            <div className="bg-[var(--nb-surface)] border-2 border-[var(--nb-ink)] rounded-md p-2.5 sm:p-3 text-center min-w-0 sm:min-w-[100px] shadow-[2px_2px_0_var(--nb-ink)]">
+              <div className="font-display text-xl sm:text-2xl font-black text-emerald-600">
                 {tenants.filter(t => t.status === 'active').length}
               </div>
-              <div className="text-[9px] font-mono font-bold uppercase">Active</div>
+              <div className="text-[8px] sm:text-[9px] font-mono font-bold uppercase truncate">Active</div>
             </div>
-            <div className="bg-white/90 border-2 border-black rounded-md p-3 text-center min-w-[100px] shadow-[2px_2px_0_#000]">
-              <div className="font-display text-2xl font-black text-rose-500">
+            <div className="bg-[var(--nb-surface)] border-2 border-[var(--nb-ink)] rounded-md p-2.5 sm:p-3 text-center min-w-0 sm:min-w-[100px] shadow-[2px_2px_0_var(--nb-ink)]">
+              <div className="font-display text-xl sm:text-2xl font-black text-rose-500">
                 {tenants.filter(t => t.status === 'inactive').length}
               </div>
-              <div className="text-[9px] font-mono font-bold uppercase">Inactive</div>
+              <div className="text-[8px] sm:text-[9px] font-mono font-bold uppercase truncate">Inactive</div>
             </div>
           </div>
         </div>
@@ -563,16 +565,16 @@ export default function SuperAdminDashboard({
                 >
                   <div className="space-y-3">
                     {/* Header row */}
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
+                    <div className="flex items-start justify-between gap-2 min-w-0">
+                      <div className="min-w-0 flex-1">
                         <span className="nb-pill-cyan text-[9px] font-mono font-bold uppercase px-1.5 py-0.5 inline-block mb-1">
                           ID: {tenant.tenantId}
                         </span>
-                        <h3 className="font-display font-bold text-lg text-[var(--nb-content)] leading-tight">
+                        <h3 className="font-display font-bold text-base sm:text-lg text-[var(--nb-content)] leading-tight truncate">
                           {tenant.name}
                         </h3>
                       </div>
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 shrink-0">
                         {/* Status toggle button */}
                         <button
                           onClick={() => handleToggleTenantStatus(tenant)}
@@ -595,20 +597,20 @@ export default function SuperAdminDashboard({
 
                     {/* Info rows */}
                     <div className="space-y-1.5 text-xs text-[var(--nb-secondary)]">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
                         <School className="w-3.5 h-3.5 flex-shrink-0" />
                         <span className="truncate">{tenant.institution || 'Main Campus'}</span>
                       </div>
-                      <div className="flex items-center gap-2 font-mono">
+                      <div className="flex items-center gap-2 font-mono min-w-0">
                         <Mail className="w-3.5 h-3.5 flex-shrink-0 text-amber-500" />
                         <span className="truncate text-[var(--nb-content)] font-bold">{tenant.adminEmail}</span>
                       </div>
                       {(() => {
                         const themeConfig = tenant.branding?.theme || resolveTenantTheme(tenant.branding);
                         return (
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
                             <Palette className="w-3.5 h-3.5 flex-shrink-0 text-[var(--nb-accent)]" />
-                            <span className="font-bold text-[var(--nb-content)]">{themeConfig.name}</span>
+                            <span className="font-bold text-[var(--nb-content)] truncate">{themeConfig.name}</span>
                             <span 
                               className="w-3.5 h-3.5 rounded-full border border-[var(--nb-ink)] inline-block flex-shrink-0" 
                               style={{ backgroundColor: themeConfig.heroBg }}
@@ -656,7 +658,6 @@ export default function SuperAdminDashboard({
                       <button
                         onClick={() => openEditModal(tenant)}
                         className="nb-btn-ghost py-2 px-3 text-xs font-bold uppercase flex items-center justify-center gap-1.5 cursor-pointer"
-                        style={{ border: '1.5px solid var(--nb-ink)' }}
                       >
                         <Edit3 className="w-3.5 h-3.5" />
                         <span>Edit</span>
@@ -666,7 +667,6 @@ export default function SuperAdminDashboard({
                     <button
                       onClick={() => handleCopyLink(tenant.tenantId)}
                       className="w-full nb-btn-ghost py-1.5 px-3 text-[10px] font-mono font-bold uppercase flex items-center justify-center gap-1.5 cursor-pointer"
-                      style={{ border: '1px solid var(--nb-ink)' }}
                     >
                       {copiedTenantId === tenant.tenantId ? (
                         <>
@@ -690,9 +690,9 @@ export default function SuperAdminDashboard({
 
       {/* ── EDIT TENANT MODAL ── */}
       {editingTenant && (
-        <div className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-2 sm:p-4">
           <div 
-            className="bg-[var(--nb-surface)] rounded-xl max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto"
+            className="bg-[var(--nb-surface)] rounded-xl max-w-lg w-full p-4 sm:p-6 space-y-4 max-h-[92vh] sm:max-h-[90vh] overflow-y-auto"
             style={{ border: '2.5px solid var(--nb-ink)', boxShadow: '6px 6px 0 var(--nb-ink)' }}
           >
             <div className="flex items-center justify-between border-b-2 border-[var(--nb-ink)] pb-3">
@@ -705,9 +705,9 @@ export default function SuperAdminDashboard({
               </div>
               <button
                 onClick={() => setEditingTenant(null)}
-                className="p-1 rounded hover:bg-[var(--nb-surface-accent)] cursor-pointer"
+                className="nb-btn-icon !w-8 !h-8 rounded cursor-pointer"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
@@ -848,7 +848,6 @@ export default function SuperAdminDashboard({
                   type="button"
                   onClick={() => setEditingTenant(null)}
                   className="flex-1 nb-btn-ghost py-2.5 text-xs font-bold uppercase cursor-pointer"
-                  style={{ border: '1.5px solid var(--nb-ink)' }}
                 >
                   Cancel
                 </button>
@@ -867,9 +866,9 @@ export default function SuperAdminDashboard({
 
       {/* ── ADD NEW TENANT MODAL ── */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-2 sm:p-4">
           <div 
-            className="bg-[var(--nb-surface)] rounded-xl max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto"
+            className="bg-[var(--nb-surface)] rounded-xl max-w-lg w-full p-4 sm:p-6 space-y-4 max-h-[92vh] sm:max-h-[90vh] overflow-y-auto"
             style={{ border: '2.5px solid var(--nb-ink)', boxShadow: '6px 6px 0 var(--nb-ink)' }}
           >
             <div className="flex items-center justify-between border-b-2 border-[var(--nb-ink)] pb-3">
@@ -879,9 +878,9 @@ export default function SuperAdminDashboard({
               </div>
               <button
                 onClick={() => setIsAddModalOpen(false)}
-                className="p-1 rounded hover:bg-[var(--nb-surface-accent)] cursor-pointer"
+                className="nb-btn-icon !w-8 !h-8 rounded cursor-pointer"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
@@ -1001,7 +1000,6 @@ export default function SuperAdminDashboard({
                   type="button"
                   onClick={() => setIsAddModalOpen(false)}
                   className="flex-1 nb-btn-ghost py-2.5 text-xs font-bold uppercase cursor-pointer"
-                  style={{ border: '1.5px solid var(--nb-ink)' }}
                 >
                   Cancel
                 </button>
@@ -1020,29 +1018,29 @@ export default function SuperAdminDashboard({
 
       {/* ── AUTOMATED VALIDATION & AUDIT MODAL ── */}
       {isValidationModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-2 sm:p-4">
           <div 
-            className="bg-[var(--nb-surface)] w-full max-w-2xl max-h-[85vh] rounded-xl overflow-hidden flex flex-col shadow-[6px_6px_0_var(--nb-ink)]"
+            className="bg-[var(--nb-surface)] w-full max-w-2xl max-h-[92vh] sm:max-h-[85vh] rounded-xl overflow-hidden flex flex-col shadow-[6px_6px_0_var(--nb-ink)]"
             style={{ border: '3px solid var(--nb-ink)' }}
           >
             {/* Modal Header */}
-            <div className="p-4 bg-[var(--nb-yellow)] text-neutral-900 border-b-2 border-[var(--nb-ink)] flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 rounded bg-white border border-black shadow-[1.5px_1.5px_0_#000]">
-                  <FlaskConical className="w-5 h-5 text-indigo-600" />
+            <div className="p-3.5 sm:p-4 bg-[var(--nb-yellow)] text-neutral-900 border-b-2 border-[var(--nb-ink)] flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="p-1.5 rounded bg-[var(--nb-surface)] border border-[var(--nb-ink)] shadow-[1.5px_1.5px_0_var(--nb-ink)] shrink-0">
+                  <FlaskConical className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-600" />
                 </div>
-                <div>
-                  <h3 className="font-display font-black text-base uppercase tracking-wider leading-tight">
+                <div className="min-w-0">
+                  <h3 className="font-display font-black text-sm sm:text-base uppercase tracking-wider leading-tight truncate">
                     Security & Isolation Audit Suite
                   </h3>
-                  <p className="text-[10px] font-mono font-bold opacity-80">
+                  <p className="text-[9px] sm:text-[10px] font-mono font-bold opacity-80 truncate">
                     Phase 6 Automated Multi-Tenant Verification
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setIsValidationModalOpen(false)}
-                className="p-1 rounded bg-white hover:bg-neutral-100 border border-black cursor-pointer shadow-[1.5px_1.5px_0_#000]"
+                className="nb-btn-icon !w-8 !h-8 rounded cursor-pointer"
               >
                 <X className="w-4 h-4 text-neutral-900" />
               </button>
@@ -1086,7 +1084,7 @@ export default function SuperAdminDashboard({
                     </div>
 
                     <div className="flex items-center gap-1.5 font-mono text-xs font-black">
-                      <span className="bg-white/90 px-2 py-0.5 rounded border border-black">
+                      <span className="bg-[var(--nb-surface)]/90 px-2 py-0.5 rounded border border-[var(--nb-ink)]">
                         {validationResults.passed}/{validationResults.total} PASS
                       </span>
                     </div>
@@ -1113,7 +1111,7 @@ export default function SuperAdminDashboard({
                               </span>
                             </div>
                             {res.details && (
-                              <p className="text-[10px] font-mono text-[var(--nb-secondary)] truncate">
+                              <p className="text-[10px] font-mono text-[var(--nb-secondary)] break-words">
                                 {res.details}
                               </p>
                             )}
@@ -1124,7 +1122,7 @@ export default function SuperAdminDashboard({
                             )}
                           </div>
 
-                          <span className={`text-[9px] font-mono font-black uppercase px-2 py-0.5 rounded border border-black shadow-[1px_1px_0_#000] flex-shrink-0 ${
+                          <span className={`text-[9px] font-mono font-black uppercase px-2 py-0.5 rounded border border-[var(--nb-ink)] shadow-[1px_1px_0_var(--nb-ink)] flex-shrink-0 ${
                             res.passed ? 'bg-emerald-400 text-neutral-900' : 'bg-rose-400 text-neutral-900'
                           }`}>
                             {res.passed ? 'PASSED' : 'FAILED'}
@@ -1147,7 +1145,6 @@ export default function SuperAdminDashboard({
                 onClick={handleRunValidation}
                 disabled={isValidating}
                 className="nb-btn-ghost py-2 px-3 text-xs font-bold uppercase flex items-center gap-1.5 cursor-pointer"
-                style={{ border: '1.5px solid var(--nb-ink)' }}
               >
                 <FlaskConical className={`w-3.5 h-3.5 ${isValidating ? 'animate-spin' : ''}`} />
                 <span>Re-run Audit</span>

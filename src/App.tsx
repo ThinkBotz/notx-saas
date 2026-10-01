@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Home as HomeIcon, 
   Calendar, 
@@ -20,6 +20,7 @@ import { ref, onValue } from 'firebase/database';
 import { db, rtdb } from './firebase';
 import { UserProfile, DepartmentEvent, EventRegistration, Album, Announcement, UserInvitation, ChatRoom, AppConfig, SupportInfo, DEFAULT_SUPPORT_INFO, AppBranding, DEFAULT_BRANDING, Tenant, SUPER_ADMIN_EMAILS } from './types';
 import BrandLogo, { ACCENT_THEMES, getCssAccent, getCssAccentFg } from './components/BrandLogo';
+import { resolveTenantTheme, applyTenantTheme } from './utils/themePresets';
 import { 
   fetchUsers, 
   fetchEvents, 
@@ -207,10 +208,13 @@ export default function App() {
     localStorage.setItem('notx_is_overseeing', String(isOverseeingTenant));
   }, [isOverseeingTenant]);
 
-  // Load active tenant data and apply branding
+  // Keep active tenant data and branding synchronized in real-time across all devices
   useEffect(() => {
-    getTenant(activeTenantId).then((t) => {
-      if (t) {
+    if (!activeTenantId) return;
+    const cleanId = activeTenantId.trim().toLowerCase();
+    const unsubscribeTenant = onSnapshot(doc(db, 'tenants', cleanId), (docSnap) => {
+      if (docSnap.exists()) {
+        const t = docSnap.data() as Tenant;
         setActiveTenant(t);
         if (t.branding) {
           setAppConfig(prev => ({
@@ -220,7 +224,11 @@ export default function App() {
           }));
         }
       }
+    }, (error) => {
+      console.warn("Realtime tenant sync note:", error);
     });
+
+    return () => unsubscribeTenant();
   }, [activeTenantId]);
 
   // Firestore States
@@ -246,16 +254,39 @@ export default function App() {
     branding: DEFAULT_BRANDING
   });
 
-  const currentBranding = appConfig.branding || DEFAULT_BRANDING;
+  // Unified reactive branding: merge activeTenant and appConfig branding, prioritizing the newest update
+  const currentBranding = useMemo<AppBranding>(() => {
+    const tenantBrand = activeTenant?.branding;
+    const configBrand = appConfig.branding;
+    if (!tenantBrand && !configBrand) return DEFAULT_BRANDING;
+    if (!tenantBrand) return configBrand!;
+    if (!configBrand) return tenantBrand;
+
+    const tenantTime = tenantBrand.updatedAt ? new Date(tenantBrand.updatedAt).getTime() : 0;
+    const configTime = configBrand.updatedAt ? new Date(configBrand.updatedAt).getTime() : 0;
+    const preferred = configTime >= tenantTime ? configBrand : tenantBrand;
+
+    return {
+      ...DEFAULT_BRANDING,
+      ...tenantBrand,
+      ...configBrand,
+      ...preferred,
+      logoType: (configBrand.logoType === 'custom' || tenantBrand.logoType === 'custom') ? 'custom' : preferred.logoType,
+      logoImageUrl: configBrand.logoImageUrl || tenantBrand.logoImageUrl || ''
+    };
+  }, [activeTenant?.branding, appConfig.branding]);
   const currentTheme = ACCENT_THEMES[currentBranding.accentColor || 'indigo'] || ACCENT_THEMES.indigo;
 
-  // Inject --nb-accent CSS variable whenever branding changes so all
-  // nb-* utility classes and inline var() references pick up the brand colour.
+  // Resolve dynamic tenant theme config (heroBg, heroFg, accent, subtleBg, etc.)
+  const tenantTheme = useMemo(() => {
+    return resolveTenantTheme(currentBranding);
+  }, [currentBranding]);
+
+  // Inject dynamic tenant theme and accent CSS variables into document.documentElement
+  // Ensures all --tenant-* and --nb-accent properties persist and adapt across light/dark modes
   useEffect(() => {
-    const root = document.documentElement;
-    root.style.setProperty('--nb-accent', getCssAccent(currentBranding.accentColor));
-    root.style.setProperty('--nb-accent-fg', getCssAccentFg(currentBranding.accentColor));
-  }, [currentBranding.accentColor]);
+    applyTenantTheme(tenantTheme);
+  }, [tenantTheme, theme]);
 
   // Keep app config, branding, and support info synchronized in real-time across all devices (per-tenant)
   useEffect(() => {
@@ -278,12 +309,13 @@ export default function App() {
     return () => unsubscribeConfig();
   }, [activeTenantId]);
 
-  // Dynamically update document title and favicon based on admin branding
+  // Dynamically update document title and favicon based on admin branding and active tenant
   useEffect(() => {
     const brandName = currentBranding.appName || 'NOTX';
     const tag = currentBranding.tagline ? ` ${currentBranding.tagline}` : ' Connect';
+    const tenantPrefix = activeTenant?.name ? `${activeTenant.name} • ` : '';
     const subtitle = currentBranding.subtitle ? ` • ${currentBranding.subtitle}` : '';
-    document.title = `${brandName}${tag}${subtitle}`;
+    document.title = `${tenantPrefix}${brandName}${tag}${subtitle}`;
 
     // Update favicon if custom logo image exists
     if (currentBranding.logoType === 'custom' && currentBranding.logoImageUrl) {
@@ -295,7 +327,7 @@ export default function App() {
       }
       link.href = currentBranding.logoImageUrl;
     }
-  }, [currentBranding]);
+  }, [currentBranding, activeTenant?.name]);
 
   // Initialize and Seed Database
   useEffect(() => {
@@ -584,12 +616,12 @@ export default function App() {
                       {currentBranding.appName || 'NOTX'}
                     </h1>
                     {activeTenant ? (
-                      <span className="nb-pill-cyan text-[9.5px] font-mono font-bold inline-flex items-center gap-1 shadow-[1.5px_1.5px_0_var(--nb-ink)]" title={`Department: ${activeTenant.name}`}>
-                        {activeTenant.shortCode || activeTenant.name}
+                      <span className={`${tenantTheme.previewBadgeClass || 'nb-pill-cyan'} text-[9.5px] font-mono font-bold inline-flex items-center gap-1 shadow-[1.5px_1.5px_0_var(--nb-ink)] max-w-[120px] sm:max-w-[200px] truncate`} title={`Department: ${activeTenant.name}`}>
+                        <span className="truncate">{activeTenant.shortCode || activeTenant.name}</span>
                       </span>
                     ) : currentBranding.subtitle ? (
-                      <span className="nb-pill-yellow text-[9.5px] font-mono font-bold hidden sm:inline-flex shadow-[1.5px_1.5px_0_var(--nb-ink)]">
-                        {currentBranding.subtitle}
+                      <span className={`${tenantTheme.previewBadgeClass || 'nb-pill-yellow'} text-[9.5px] font-mono font-bold hidden sm:inline-flex shadow-[1.5px_1.5px_0_var(--nb-ink)] max-w-[160px] truncate`}>
+                        <span className="truncate">{currentBranding.subtitle}</span>
                       </span>
                     ) : null}
                   </div>
@@ -664,6 +696,8 @@ export default function App() {
                 onSelectEvent={selectEventFromDashboard}
                 isLoading={isDataLoading}
                 activeTenantId={activeTenantId}
+                activeTenant={activeTenant}
+                branding={currentBranding}
               />
             )}
 
@@ -679,6 +713,8 @@ export default function App() {
                 setSelectedEvent={setSelectedEvent}
                 isLoading={isDataLoading}
                 activeTenantId={activeTenantId}
+                activeTenant={activeTenant}
+                branding={currentBranding}
               />
             )}
 
@@ -708,6 +744,7 @@ export default function App() {
                   initialTargetRoll={messageTargetRoll}
                   onTargetHandled={() => setMessageTargetRoll(null)}
                   activeTenantId={activeTenantId}
+                  activeTenant={activeTenant}
                 />
               ) : (
                 <div className="flex-1 flex flex-col items-center justify-center p-8 text-center gap-4">
@@ -787,7 +824,7 @@ export default function App() {
                   </button>
                 </div>
                 <div className="flex-1 overflow-y-auto min-h-0">
-                  <MembersView allUsers={allUsers} events={events} branding={currentBranding} />
+                  <MembersView allUsers={allUsers} events={events} branding={currentBranding} activeTenant={activeTenant} />
                 </div>
               </div>
             </div>

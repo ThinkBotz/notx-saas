@@ -156,11 +156,89 @@ export async function createTenant(tenant: Tenant): Promise<void> {
   }
 }
 
+/**
+ * Automatically transfers tenant admin ownership:
+ * - Finds and removes previous/stray admin profiles belonging to this tenant whose email does not match newAdminEmail.
+ * - Promotes or provisions the new admin profile in Firestore so user count is always 1:1.
+ */
+export async function transferTenantAdminOwnership(
+  tenantId: string,
+  newAdminEmail: string,
+  deptName?: string
+): Promise<void> {
+  const cleanId = tenantId.trim().toLowerCase();
+  const cleanNewEmail = newAdminEmail.trim().toLowerCase();
+
+  try {
+    // 1. Fetch all users for this tenant
+    const q = query(collection(db, 'users'), where('tenantId', '==', cleanId));
+    const usersSnap = await getDocs(q);
+    let newAdminProfileFound = false;
+
+    for (const userDoc of usersSnap.docs) {
+      const u = userDoc.data() as UserProfile;
+      const userEmail = (u.email || '').trim().toLowerCase();
+      const userGoogleEmail = (u.googleEmail || '').trim().toLowerCase();
+
+      if (userEmail === cleanNewEmail || userGoogleEmail === cleanNewEmail) {
+        newAdminProfileFound = true;
+        // Ensure role is admin
+        if (u.role !== 'admin') {
+          await updateDoc(doc(db, 'users', userDoc.id), {
+            role: 'admin',
+            position: 'Department Administrator',
+            responsibilities: `Administrative access for ${deptName || cleanId.toUpperCase()}`
+          });
+        }
+      } else if (u.role === 'admin') {
+        // Stale or previous admin found for this tenant! Remove their profile completely
+        console.log(`[Ownership Transfer] Removing previous admin user profile: ${u.uid} (${u.email}) from tenant: ${cleanId}`);
+        await deleteDoc(doc(db, 'users', userDoc.id));
+      }
+    }
+
+    // 2. If no profile exists for the new admin yet, create a clean placeholder profile
+    if (!newAdminProfileFound) {
+      const adminUid = `admin_${cleanId}_${Date.now()}`;
+      const newAdminUser: UserProfile = {
+        uid: adminUid,
+        name: `${deptName || cleanId.toUpperCase()} Admin`,
+        email: cleanNewEmail,
+        googleEmail: cleanNewEmail,
+        role: 'admin',
+        tenantId: cleanId,
+        position: 'Department Administrator',
+        department: deptName || cleanId.toUpperCase(),
+        responsibilities: `Administrative control for ${deptName || cleanId.toUpperCase()}`,
+        created_at: new Date().toISOString()
+      };
+      await setDoc(doc(db, 'users', adminUid), cleanUndefined(newAdminUser));
+    }
+  } catch (err) {
+    console.error('[Ownership Transfer Error]:', err);
+    throw err;
+  }
+}
+
 export async function updateTenant(tenantId: string, updates: Partial<Tenant>): Promise<void> {
   const cleanId = tenantId.trim().toLowerCase();
   const path = `tenants/${cleanId}`;
   try {
-    await updateDoc(doc(db, 'tenants', cleanId), cleanUndefined(updates));
+    const tenantDocRef = doc(db, 'tenants', cleanId);
+    const prevSnap = await getDoc(tenantDocRef);
+    const prevTenant = prevSnap.exists() ? (prevSnap.data() as Tenant) : null;
+
+    await updateDoc(tenantDocRef, cleanUndefined(updates));
+
+    const finalAdminEmail = (updates.adminEmail || prevTenant?.adminEmail || '').trim().toLowerCase();
+    if (finalAdminEmail) {
+      // Auto ownership transfer: clean up previous admin data & ensure new admin is established
+      await transferTenantAdminOwnership(
+        cleanId,
+        finalAdminEmail,
+        updates.shortCode || updates.name || prevTenant?.shortCode || prevTenant?.name || cleanId
+      );
+    }
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, path);
     throw error;
@@ -662,6 +740,19 @@ export function getActiveTenantId(): string {
   }
 }
 
+export function getActiveTenantShortCode(): string {
+  try {
+    const raw = localStorage.getItem('notx_active_tenant') || '';
+    if (!raw) return 'ORG';
+    const clean = raw.replace(/^dept-/, '');
+    const parts = clean.split('-');
+    const candidate = parts[parts.length - 1].toUpperCase();
+    return candidate.slice(0, 6) || 'ORG';
+  } catch {
+    return 'ORG';
+  }
+}
+
 export async function createEvent(event: DepartmentEvent): Promise<void> {
   const path = `events/${event.eventId}`;
   try {
@@ -1147,30 +1238,40 @@ function getConfigDocId(tenantId?: string): string {
   return `config_${tid}`;
 }
 
+function getTenantBrandingCacheKey(tenantId?: string): string {
+  const tid = (tenantId || getActiveTenantId()).trim().toLowerCase();
+  return tid ? `notx_branding_${tid}` : 'notx_branding';
+}
+
 export async function getAppConfig(tenantId?: string): Promise<AppConfig> {
   const docId = getConfigDocId(tenantId);
   const path = `appSettings/${docId}`;
+  const cleanTid = (tenantId || getActiveTenantId()).trim().toLowerCase();
   try {
     const configDocRef = doc(db, 'appSettings', docId);
     const configSnap = await getDoc(configDocRef);
     if (!configSnap.exists()) {
-      // Fallback: try the old global 'config' doc for backwards compatibility
-      const globalRef = doc(db, 'appSettings', 'config');
-      const globalSnap = await getDoc(globalRef);
-      if (globalSnap.exists()) {
-        const globalData = globalSnap.data() as AppConfig;
-        // Migrate: copy the global config into the tenant-specific doc
-        globalData.tenantId = (tenantId || getActiveTenantId()).trim().toLowerCase();
-        await setDoc(configDocRef, cleanUndefined(globalData));
-        return normalizeAppConfig(globalData);
+      // Look up tenant from 'tenants' collection to get their specific pristine allotted branding
+      // NEVER clone from the global legacy 'config' document to prevent cross-tenant leakage!
+      let tenantBranding: AppBranding = DEFAULT_BRANDING;
+      let tenantSupport: SupportInfo = DEFAULT_SUPPORT_INFO;
+      if (cleanTid) {
+        try {
+          const tSnap = await getDoc(doc(db, 'tenants', cleanTid));
+          if (tSnap.exists()) {
+            const tData = tSnap.data() as Tenant;
+            if (tData.branding) tenantBranding = tData.branding;
+            if (tData.supportInfo) tenantSupport = tData.supportInfo;
+          }
+        } catch (e) {}
       }
       const defaultConfig: AppConfig = { 
         isChatEnabled: true,
         isCertificatesEnabled: true,
         certificateTemplate: DEFAULT_CERTIFICATE_TEMPLATE,
-        supportInfo: DEFAULT_SUPPORT_INFO,
-        branding: DEFAULT_BRANDING,
-        tenantId: (tenantId || getActiveTenantId()).trim().toLowerCase()
+        supportInfo: tenantSupport,
+        branding: tenantBranding,
+        tenantId: cleanTid
       };
       await setDoc(configDocRef, cleanUndefined(defaultConfig));
       return defaultConfig;
@@ -1270,11 +1371,34 @@ export async function updateAppBranding(branding: Partial<AppBranding>, tenantId
       updatedAt: new Date().toISOString()
     });
     try {
-      localStorage.setItem('notx_branding', JSON.stringify(updatedBranding));
+      localStorage.setItem(getTenantBrandingCacheKey(tenantId), JSON.stringify(updatedBranding));
     } catch (e) {}
     await setDoc(configDocRef, { 
       branding: updatedBranding
     }, { merge: true });
+
+    // Step 1: Also synchronize the 'tenants' collection document
+    // Ensures LoginView (which subscribes to 'tenants') and App.tsx (which loads activeTenant)
+    // immediately display the new crest photo, logo image, and branding dynamic properties
+    const effectiveTenantId = (tenantId || getActiveTenantId() || '').trim().toLowerCase();
+    if (effectiveTenantId) {
+      try {
+        const tenantDocRef = doc(db, 'tenants', effectiveTenantId);
+        const tenantSnap = await getDoc(tenantDocRef);
+        if (tenantSnap.exists()) {
+          const tenantData = tenantSnap.data() as Tenant;
+          const mergedTenantBranding = cleanUndefined({
+            ...(tenantData.branding || {}),
+            ...updatedBranding
+          });
+          await updateDoc(tenantDocRef, {
+            branding: mergedTenantBranding
+          });
+        }
+      } catch (tenantErr) {
+        console.warn('Tenant collection branding sync note:', tenantErr);
+      }
+    }
   } catch (error) {
     console.error('Error updating app branding:', error);
     handleFirestoreError(error, OperationType.UPDATE, path);
@@ -1284,26 +1408,27 @@ export async function updateAppBranding(branding: Partial<AppBranding>, tenantId
 
 export function subscribeToAppConfig(callback: (config: AppConfig) => void, tenantId?: string): () => void {
   const docId = getConfigDocId(tenantId);
+  const cacheKey = getTenantBrandingCacheKey(tenantId);
   const configDocRef = doc(db, 'appSettings', docId);
   return onSnapshot(configDocRef, (snap) => {
     if (snap.exists()) {
       const data = snap.data() as AppConfig;
       if (!data.branding) {
-        const cached = localStorage.getItem('notx_branding');
+        const cached = localStorage.getItem(cacheKey);
         if (cached) {
           try { data.branding = JSON.parse(cached); } catch (e) { data.branding = DEFAULT_BRANDING; }
         } else {
           data.branding = DEFAULT_BRANDING;
         }
       } else {
-        try { localStorage.setItem('notx_branding', JSON.stringify(data.branding)); } catch (e) {}
+        try { localStorage.setItem(cacheKey, JSON.stringify(data.branding)); } catch (e) {}
       }
       if (!data.supportInfo) data.supportInfo = DEFAULT_SUPPORT_INFO;
       if (!data.certificateTemplate) data.certificateTemplate = DEFAULT_CERTIFICATE_TEMPLATE;
       if (data.isCertificatesEnabled === undefined) data.isCertificatesEnabled = true;
       callback(data);
     } else {
-      const cached = localStorage.getItem('notx_branding');
+      const cached = localStorage.getItem(cacheKey);
       let fallbackBranding = DEFAULT_BRANDING;
       if (cached) {
         try { fallbackBranding = JSON.parse(cached); } catch (e) {}
@@ -1551,22 +1676,26 @@ export const clearAllDatabaseData = async () => {
 // E-CERTIFICATE DATABASE & ISSUANCE SYSTEM
 // ==========================================
 
-export function generateCertificateId(rollNumber?: string, eventId?: string): string {
+export function generateCertificateId(rollNumber?: string, eventId?: string, tenantShortCode?: string): string {
   const cleanRoll = (rollNumber || 'STU').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
   const shortRoll = cleanRoll.length > 6 ? cleanRoll.slice(-6) : cleanRoll;
-  const cleanEvt = (eventId || 'AIML').replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 4);
+  const cleanEvt = (eventId || 'GEN').replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 4);
+  const rawPrefix = tenantShortCode || getActiveTenantShortCode() || 'ORG';
+  const prefix = rawPrefix.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 6) || 'ORG';
   const randomSuffix = Math.random().toString(36).substring(2, 6).toUpperCase();
-  return `CERT-AIML-${shortRoll}-${cleanEvt}-${randomSuffix}`;
+  return `CERT-${prefix}-${shortRoll}-${cleanEvt}-${randomSuffix}`;
 }
 
-export async function issueCertificate(certData: Omit<IssuedCertificate, 'issuedAt'>): Promise<IssuedCertificate> {
-  const certId = certData.certificateId || generateCertificateId(certData.rollNumber, certData.eventId);
+export async function issueCertificate(certData: Omit<IssuedCertificate, 'issuedAt'>, tenantShortCode?: string): Promise<IssuedCertificate> {
+  const tId = certData.tenantId || getActiveTenantId();
+  const effectiveShortCode = tenantShortCode || (tId ? tId.replace(/^dept-/, '').split('-').pop()?.toUpperCase() : undefined);
+  const certId = certData.certificateId || generateCertificateId(certData.rollNumber, certData.eventId, effectiveShortCode);
   const path = `certificates/${certId}`;
   
   const fullCert: IssuedCertificate = {
     ...certData,
     certificateId: certId,
-    tenantId: certData.tenantId || getActiveTenantId(),
+    tenantId: tId,
     issuedAt: new Date().toISOString(),
     status: certData.status || 'Issued',
     issueDate: certData.issueDate || new Date().toISOString().split('T')[0],
@@ -1735,7 +1864,9 @@ export async function syncCertificatesForAttendees(
 
     if (!exists) {
       const studentUser = allUsers.find(u => u.uid === reg.studentId || (reg.rollNumber && u.rollNumber?.toUpperCase() === reg.rollNumber.toUpperCase()));
-      const certId = generateCertificateId(reg.rollNumber || studentUser?.rollNumber, matchedEvent.eventId);
+      const effectiveTid = tenantId || getActiveTenantId();
+      const derivedCode = effectiveTid ? effectiveTid.replace(/^dept-/, '').split('-').pop()?.toUpperCase() : undefined;
+      const certId = generateCertificateId(reg.rollNumber || studentUser?.rollNumber, matchedEvent.eventId, derivedCode);
       
       const newCert: Omit<IssuedCertificate, 'issuedAt'> = {
         certificateId: certId,
@@ -1746,7 +1877,7 @@ export async function syncCertificatesForAttendees(
         studentId: reg.studentId || studentUser?.uid || 'student_' + (reg.rollNumber || 'unknown'),
         studentName: reg.studentName || studentUser?.name || 'Student Participant',
         rollNumber: reg.rollNumber || studentUser?.rollNumber || 'N/A',
-        tenantId: tenantId || getActiveTenantId(),
+        tenantId: effectiveTid,
         department: studentUser?.department || '',
         year: studentUser?.year || reg.year || '',
         section: studentUser?.section || '',
@@ -1820,7 +1951,8 @@ export async function generateBatchCertificatesForEvent(
     }
 
     const studentUser = usersList.find(u => u.uid === reg.studentId || (reg.rollNumber && u.rollNumber?.toUpperCase() === reg.rollNumber.toUpperCase()));
-    const certId = generateCertificateId(reg.rollNumber || studentUser?.rollNumber, matchedEvent.eventId);
+    const derivedCode = tid ? tid.replace(/^dept-/, '').split('-').pop()?.toUpperCase() : undefined;
+    const certId = generateCertificateId(reg.rollNumber || studentUser?.rollNumber, matchedEvent.eventId, derivedCode);
 
     const newCert: Omit<IssuedCertificate, 'issuedAt'> = {
       certificateId: certId,

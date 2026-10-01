@@ -198,17 +198,17 @@ export interface CertificateTemplate {
 }
 
 export const DEFAULT_CERTIFICATE_TEMPLATE: CertificateTemplate = {
-  orgName: "NOTX Association",
-  departmentName: "CSE (Artificial Intelligence & Machine Learning)",
-  institutionName: "Department of Computer Science & Engineering",
+  orgName: "Student Association",
+  departmentName: "Academic Department",
+  institutionName: "Faculty of Engineering & Technology",
   certificateTitle: "Certificate of Participation",
   certifyStatement: "This is to certify that",
-  bodyText: "has successfully registered and participated in the {eventTitle} held on {eventDate} at the department premises.",
+  bodyText: "has successfully registered and participated in {eventTitle} held on {eventDate} at the institutional campus premises.",
   signatory1Name: "Head of Department",
-  signatory1Title: "HOD, CSE (AI & ML)",
-  signatory1Dept: "Department of AI & ML",
-  signatory2Name: "NOTX Connect",
-  signatory2Title: "Faculty Lead",
+  signatory1Title: "Department Chair",
+  signatory1Dept: "Academic Council",
+  signatory2Name: "Association Lead",
+  signatory2Title: "Faculty Coordinator",
   signatory2Dept: "Verified Credential",
   theme: "indigo",
   badgeStyle: "seal",
@@ -216,6 +216,18 @@ export const DEFAULT_CERTIFICATE_TEMPLATE: CertificateTemplate = {
   showVerificationBadge: true,
   footerNote: "Verified Academic Credential • NOTX Connect"
 };
+
+export function createDefaultCertificateTemplate(tenant?: { name?: string; shortCode?: string; orgName?: string }): CertificateTemplate {
+  const deptName = tenant?.name || "Academic Department";
+  const short = tenant?.shortCode || "ORG";
+  return {
+    ...DEFAULT_CERTIFICATE_TEMPLATE,
+    orgName: tenant?.orgName || `${short} Student Association`,
+    departmentName: deptName,
+    signatory1Title: `HOD, ${short}`,
+    signatory1Dept: deptName,
+  };
+}
 
 export type ThemePresetKey = 
   | 'cobalt-tech' 
@@ -278,7 +290,7 @@ export interface AppConfig {
 
 export interface IssuedCertificate {
   tenantId?: string;
-  certificateId: string; // Unique Certificate ID e.g. CERT-AIML-22A91A0501-E87D
+  certificateId: string; // Unique Certificate ID e.g. CERT-ORG-22A91A0501-E87D
   eventId: string;
   eventTitle: string;
   eventDate: string;

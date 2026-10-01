@@ -26,7 +26,7 @@ import {
   X,
   Filter
 } from 'lucide-react';
-import { UserProfile, DepartmentEvent, Announcement, EventRegistration, EventWinner } from '../types';
+import { UserProfile, DepartmentEvent, Announcement, EventRegistration, EventWinner, Tenant, AppBranding } from '../types';
 import { subscribeToEventWinners, deleteEventWinner } from '../firebase';
 import AddEventWinnerModal from './AddEventWinnerModal';
 import WinnerDetailsModal from './WinnerDetailsModal';
@@ -42,6 +42,8 @@ interface DashboardViewProps {
   onSelectEvent: (event: DepartmentEvent) => void;
   isLoading?: boolean;
   activeTenantId?: string;
+  activeTenant?: Tenant | null;
+  branding?: AppBranding;
 }
 
 export default function DashboardView({ 
@@ -53,7 +55,9 @@ export default function DashboardView({
   onNavigate,
   onSelectEvent,
   isLoading = false,
-  activeTenantId
+  activeTenantId,
+  activeTenant,
+  branding
 }: DashboardViewProps) {
   const [winners, setWinners] = useState<EventWinner[]>([]);
   const [isAddWinnerOpen, setIsAddWinnerOpen] = useState(false);
@@ -175,15 +179,14 @@ export default function DashboardView({
   return (
     <div className="flex-1 overflow-y-auto px-4 pt-4 pb-4 space-y-5 bg-[var(--nb-bg)] text-[var(--nb-content)]">
 
-      {/* ── WELCOME HERO STRIP (BOLD NEO-BRUTALIST COLOR BLOCK) ── */}
+      {/* ── WELCOME HERO STRIP (BOLD DYNAMIC MULTI-TENANT BRAND BLOCK) ── */}
       <div
-        className="flex items-center gap-4 p-4 sm:p-5 rounded-lg nb-card-yellow"
-        style={{ border: '2.5px solid var(--nb-ink)', boxShadow: 'var(--shadow-hard)' }}
+        className="flex items-center gap-4 p-4 sm:p-5 rounded-lg nb-tenant-hero"
       >
         {/* Avatar */}
         <div className="relative flex-shrink-0">
           <div
-            className="w-14 h-14 sm:w-16 sm:h-16 rounded-lg overflow-hidden bg-white"
+            className="w-14 h-14 sm:w-16 sm:h-16 rounded-lg overflow-hidden bg-[var(--nb-surface-accent)]"
             style={{ border: '2px solid var(--nb-ink)' }}
           >
             <img
@@ -197,40 +200,40 @@ export default function DashboardView({
             className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center"
             style={{ border: '2px solid var(--nb-ink)' }}
           >
-            <span className="w-1.5 h-1.5 rounded-full bg-white" />
+            <span className="w-1.5 h-1.5 rounded-full bg-[var(--nb-surface)]" />
           </span>
         </div>
 
         {/* Text */}
         <div className="min-w-0 flex-1">
-          <p className="font-mono text-xs text-neutral-900 font-extrabold tracking-wider uppercase">
+          <p className="font-mono text-xs font-extrabold tracking-wider uppercase opacity-90" style={{ color: 'var(--tenant-hero-fg)' }}>
             GOOD {new Date().getHours() < 12 ? 'MORNING' : new Date().getHours() < 18 ? 'AFTERNOON' : 'EVENING'}
           </p>
           <h2
-            className="nb-headline leading-none truncate text-neutral-900"
-            style={{ fontSize: 'clamp(1.5rem, 5vw, 2.2rem)' }}
+            className="nb-headline leading-none truncate"
+            style={{ fontSize: 'clamp(1.5rem, 5vw, 2.2rem)', color: 'var(--tenant-hero-fg)' }}
           >
             {user.name}!
           </h2>
           {/* Badge row */}
           <div className="flex items-center gap-2 flex-wrap mt-2">
-            <span className={`nb-pill-${user.role === 'admin' ? 'coral' : user.role === 'associate' ? 'purple' : 'blue'} text-[10px] px-2 py-0.5 rounded flex items-center gap-1 font-bold text-white border border-black shadow-[1.5px_1.5px_0_#000]`}>
+            <span className={`nb-pill-${user.role === 'admin' ? 'coral' : user.role === 'associate' ? 'purple' : 'blue'} text-[10px] px-2 py-0.5 rounded flex items-center gap-1 font-bold text-white border border-[var(--nb-ink)] shadow-[1.5px_1.5px_0_var(--nb-ink)]`}>
               {user.role === 'admin' ? <ShieldCheck className="w-3 h-3 text-white" /> : user.role === 'associate' ? <Award className="w-3 h-3 text-white" /> : <GraduationCap className="w-3 h-3 text-white" />}
               {user.role.toUpperCase()}
             </span>
             {user.rollNumber && (
-              <span className="nb-pill-green text-[10px] px-2 py-0.5 rounded flex items-center gap-1 font-mono font-bold text-neutral-900 border border-black shadow-[1.5px_1.5px_0_#000]">
+              <span className="nb-pill-green text-[10px] px-2 py-0.5 rounded flex items-center gap-1 font-mono font-bold text-neutral-900 border border-[var(--nb-ink)] shadow-[1.5px_1.5px_0_var(--nb-ink)]">
                 <Hash className="w-3 h-3 text-neutral-900" />
                 {user.rollNumber}
               </span>
             )}
             {user.role === 'student' && (user.year || user.section) ? (
-              <span className="nb-pill-pink text-[10px] px-2 py-0.5 rounded flex items-center gap-1 font-bold text-white border border-black shadow-[1.5px_1.5px_0_#000]">
+              <span className="nb-pill-pink text-[10px] px-2 py-0.5 rounded flex items-center gap-1 font-bold text-white border border-[var(--nb-ink)] shadow-[1.5px_1.5px_0_var(--nb-ink)]">
                 <BookOpen className="w-3 h-3 text-white" />
                 {user.year}{user.section ? ` · SEC ${user.section}` : ''}
               </span>
             ) : user.position ? (
-              <span className="nb-pill-cyan text-[10px] px-2 py-0.5 rounded flex items-center gap-1 font-bold text-neutral-900 border border-black shadow-[1.5px_1.5px_0_#000]">
+              <span className="nb-pill-cyan text-[10px] px-2 py-0.5 rounded flex items-center gap-1 font-bold text-neutral-900 border border-[var(--nb-ink)] shadow-[1.5px_1.5px_0_var(--nb-ink)]">
                 <Award className="w-3 h-3 text-neutral-900" />
                 {user.position}
               </span>
@@ -388,7 +391,7 @@ export default function DashboardView({
             className="p-8 sm:p-10 text-center rounded-xl bg-[var(--nb-surface)] relative overflow-hidden"
             style={{ border: '2px solid var(--nb-ink)', boxShadow: 'var(--shadow-hard)' }}
           >
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 mb-4 rounded-full nb-pill-purple text-white text-[10px] font-mono font-bold tracking-wider uppercase border-1.5 border-black shadow-[2px_2px_0_#000]">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 mb-4 rounded-full nb-pill-purple text-white text-[10px] font-mono font-bold tracking-wider uppercase border-1.5 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)]">
               <span>★ PODIUM SPOTLIGHT ★</span>
             </div>
 
@@ -545,9 +548,9 @@ export default function DashboardView({
                           {winner.studentName}
                         </h5>
                         <div className="flex items-center gap-1.5 mt-0.5">
-                          <span className="nb-pill-blue text-[9px] px-1.5 py-0.2 rounded font-mono">{winner.rollNumber}</span>
+                          <span className="nb-pill-blue text-[9px] px-1.5 py-0.5 rounded font-mono">{winner.rollNumber}</span>
                           <span className="nb-label text-[10px] truncate" style={{ color: 'var(--nb-tertiary)' }}>
-                            {winner.department || 'CSE (AI & ML)'}
+                            {winner.department || activeTenant?.shortCode || activeTenant?.name || 'Department'}
                           </span>
                         </div>
                       </div>
@@ -639,7 +642,7 @@ export default function DashboardView({
                     />
                     {/* Category tag */}
                     <span
-                      className={`absolute top-2 left-2 text-[10px] px-2 py-0.5 rounded font-mono font-bold border border-black shadow-[1.5px_1.5px_0_#000] uppercase ${
+                      className={`absolute top-2 left-2 text-[10px] px-2 py-0.5 rounded font-mono font-bold border border-[var(--nb-ink)] shadow-[1.5px_1.5px_0_var(--nb-ink)] uppercase ${
                         event.category === 'Workshops' ? 'nb-pill-blue' :
                         event.category === 'Hackathons' ? 'nb-pill-purple' :
                         event.category === 'Seminars' ? 'nb-pill-green' :
@@ -695,7 +698,7 @@ export default function DashboardView({
               className="nb-card flex gap-3 items-start cursor-pointer hover:bg-[var(--nb-surface-accent)] transition-colors"
             >
               <div
-                className={`w-8 h-8 rounded flex items-center justify-center flex-shrink-0 mt-0.5 border border-black shadow-[1.5px_1.5px_0_#000] ${
+                className={`w-8 h-8 rounded flex items-center justify-center flex-shrink-0 mt-0.5 border border-[var(--nb-ink)] shadow-[1.5px_1.5px_0_var(--nb-ink)] ${
                   announce.category === 'Exam' ? 'nb-pill-coral' :
                   announce.category === 'Workshop' ? 'nb-pill-blue' :
                   announce.category === 'Result' ? 'nb-pill-green' :
@@ -706,7 +709,7 @@ export default function DashboardView({
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex justify-between items-baseline">
-                  <span className={`text-[10px] px-2 py-0.5 rounded font-mono font-bold border border-black shadow-[1.5px_1.5px_0_#000] uppercase ${
+                  <span className={`text-[10px] px-2 py-0.5 rounded font-mono font-bold border border-[var(--nb-ink)] shadow-[1.5px_1.5px_0_var(--nb-ink)] uppercase ${
                     announce.category === 'Exam' ? 'nb-pill-coral' :
                     announce.category === 'Workshop' ? 'nb-pill-blue' :
                     announce.category === 'Result' ? 'nb-pill-green' :
@@ -734,6 +737,7 @@ export default function DashboardView({
           allUsers={allUsers}
           currentUser={user}
           initialWinner={winnerToEdit}
+          activeTenant={activeTenant}
           onWinnerSaved={() => {
             setToastMessage(winnerToEdit ? 'Winner updated!' : 'New Champion published!');
             setTimeout(() => setToastMessage(null), 3500);
@@ -749,6 +753,7 @@ export default function DashboardView({
           canManageWinners={canManageWinners}
           onEdit={(w) => { setWinnerToView(null); handleOpenEdit(w); }}
           onDelete={(w) => { setWinnerToView(null); setWinnerToDelete(w); }}
+          activeTenant={activeTenant}
         />
       )}
 

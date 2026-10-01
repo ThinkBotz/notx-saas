@@ -19,7 +19,7 @@ import {
   Check,
   AlertCircle
 } from 'lucide-react';
-import { UserProfile, DepartmentEvent, EventRegistration } from '../types';
+import { UserProfile, DepartmentEvent, EventRegistration, Tenant } from '../types';
 import HoldButton from './HoldButton';
 import { exportAllDatabaseData, resetEntireDatabaseForNewAssociation, SystemBackupData } from '../firebase';
 
@@ -32,6 +32,7 @@ interface ResetAssociationModalProps {
   registrations: EventRegistration[];
   initialTab?: 'export' | 'reset';
   onResetComplete: () => void;
+  activeTenant?: Tenant | null;
 }
 
 export default function ResetAssociationModal({
@@ -42,7 +43,8 @@ export default function ResetAssociationModal({
   events,
   registrations,
   initialTab = 'export',
-  onResetComplete
+  onResetComplete,
+  activeTenant
 }: ResetAssociationModalProps) {
   const [activeTab, setActiveTab] = useState<'export' | 'reset'>(initialTab);
 
@@ -261,7 +263,7 @@ export default function ResetAssociationModal({
                   <Database className="w-3.5 h-3.5 text-[var(--nb-accent)]" />
                   <span>CURRENT DATABASE STATE</span>
                 </span>
-                <span className="nb-label text-[10px] text-[var(--nb-secondary)]">CSE (AI & ML)</span>
+                <span className="nb-label text-[10px] text-[var(--nb-secondary)]">{activeTenant?.name || activeTenant?.shortCode || 'CURRENT TENANT'}</span>
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">

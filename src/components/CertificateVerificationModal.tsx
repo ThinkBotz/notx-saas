@@ -14,7 +14,7 @@ import {
   Copy,
   Check
 } from 'lucide-react';
-import { IssuedCertificate, CertificateTemplate, DEFAULT_CERTIFICATE_TEMPLATE } from '../types';
+import { IssuedCertificate, CertificateTemplate, DEFAULT_CERTIFICATE_TEMPLATE, Tenant } from '../types';
 import { verifyCertificateById } from '../firebase';
 import CertificateCard from './CertificateCard';
 
@@ -23,13 +23,15 @@ interface CertificateVerificationModalProps {
   onClose: () => void;
   initialId?: string;
   template?: CertificateTemplate;
+  activeTenant?: Tenant | null;
 }
 
 export const CertificateVerificationModal: React.FC<CertificateVerificationModalProps> = ({
   isOpen,
   onClose,
   initialId = '',
-  template = DEFAULT_CERTIFICATE_TEMPLATE
+  template = DEFAULT_CERTIFICATE_TEMPLATE,
+  activeTenant
 }) => {
   const [certIdInput, setCertIdInput] = useState(initialId);
   const [isVerifying, setIsVerifying] = useState(false);
@@ -100,8 +102,7 @@ export const CertificateVerificationModal: React.FC<CertificateVerificationModal
 
           <button
             onClick={onClose}
-            className="nb-btn-ghost w-7 h-7 rounded flex items-center justify-center cursor-pointer"
-            style={{ border: '1.5px solid var(--nb-ink)' }}
+            className="nb-btn-icon !w-8 !h-8 rounded cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
@@ -116,7 +117,7 @@ export const CertificateVerificationModal: React.FC<CertificateVerificationModal
               <Hash className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--nb-secondary)] font-mono" />
               <input
                 type="text"
-                placeholder="e.g. CERT-AIML-0501-A4B2..."
+                placeholder={`e.g. CERT-${activeTenant?.shortCode || 'ORG'}-0501-A4B2...`}
                 value={certIdInput}
                 onChange={(e) => setCertIdInput(e.target.value)}
                 className="w-full bg-[var(--nb-surface-accent)] rounded pl-9 pr-4 py-2.5 text-xs text-[var(--nb-content)] font-mono font-bold uppercase outline-none"
@@ -127,7 +128,6 @@ export const CertificateVerificationModal: React.FC<CertificateVerificationModal
               type="submit"
               disabled={isVerifying || !certIdInput.trim()}
               className="px-4 py-2.5 rounded nb-btn font-bold text-xs uppercase tracking-wider cursor-pointer disabled:opacity-50 shrink-0 flex items-center gap-1.5"
-              style={{ border: '2px solid var(--nb-ink)', boxShadow: 'var(--shadow-hard-sm)' }}
             >
               {isVerifying ? (
                 <>
@@ -175,18 +175,18 @@ export const CertificateVerificationModal: React.FC<CertificateVerificationModal
                 className="p-4 rounded bg-emerald-400 text-black flex items-center justify-between gap-3"
                 style={{ border: '2px solid var(--nb-ink)', boxShadow: 'var(--shadow-hard-sm)' }}
               >
-                <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-2.5 min-w-0 flex-1">
                   <div 
-                    className="w-9 h-9 rounded bg-white flex items-center justify-center text-black shrink-0"
+                    className="w-9 h-9 rounded bg-[var(--nb-surface)] flex items-center justify-center text-[var(--nb-content)] shrink-0"
                     style={{ border: '1.5px solid var(--nb-ink)' }}
                   >
-                    <CheckCircle2 className="w-5 h-5" />
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600" />
                   </div>
-                  <div>
-                    <div className="text-xs font-bold uppercase tracking-wider font-mono">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-bold uppercase tracking-wider font-mono truncate">
                       Official Verified Credential
                     </div>
-                    <div className="text-[10px] font-bold opacity-80">
+                    <div className="text-[10px] font-bold opacity-80 truncate">
                       Tamper-evident record authenticated in institutional database
                     </div>
                   </div>
@@ -195,11 +195,11 @@ export const CertificateVerificationModal: React.FC<CertificateVerificationModal
                 <button
                   type="button"
                   onClick={handleCopy}
-                  className="px-2.5 py-1 rounded bg-white text-black text-[10px] font-mono font-bold flex items-center gap-1 cursor-pointer shrink-0"
+                  className="px-2.5 py-1 rounded bg-[var(--nb-surface)] text-[var(--nb-content)] text-[10px] font-mono font-bold flex items-center gap-1 cursor-pointer shrink-0"
                   style={{ border: '1.5px solid var(--nb-ink)' }}
                   title="Copy Certificate ID"
                 >
-                  {copied ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3 text-black" />}
+                  {copied ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3 text-[var(--nb-content)]" />}
                   <span>{copied ? "COPIED" : "COPY ID"}</span>
                 </button>
               </div>
@@ -207,19 +207,19 @@ export const CertificateVerificationModal: React.FC<CertificateVerificationModal
               {/* Credential Attributes Grid */}
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div 
-                  className="bg-[var(--nb-surface)] rounded p-3 space-y-0.5"
+                  className="bg-[var(--nb-surface)] rounded p-3 space-y-0.5 min-w-0"
                   style={{ border: '1.5px solid var(--nb-ink)' }}
                 >
                   <span className="nb-label text-[9px] text-[var(--nb-secondary)] block">RECIPIENT NAME</span>
-                  <div className="nb-headline text-sm text-[var(--nb-content)]">{verifiedCert.studentName}</div>
+                  <div className="nb-headline text-sm text-[var(--nb-content)] truncate">{verifiedCert.studentName}</div>
                 </div>
 
                 <div 
-                  className="bg-[var(--nb-surface)] rounded p-3 space-y-0.5"
+                  className="bg-[var(--nb-surface)] rounded p-3 space-y-0.5 min-w-0"
                   style={{ border: '1.5px solid var(--nb-ink)' }}
                 >
                   <span className="nb-label text-[9px] text-[var(--nb-secondary)] block">ROLL NUMBER</span>
-                  <div className="font-bold text-[var(--nb-accent)] font-mono">{verifiedCert.rollNumber}</div>
+                  <div className="font-bold text-[var(--nb-accent)] font-mono truncate">{verifiedCert.rollNumber}</div>
                 </div>
 
                 <div 
@@ -288,11 +288,10 @@ export const CertificateVerificationModal: React.FC<CertificateVerificationModal
         <div 
           className="px-5 py-3 border-t-2 border-[var(--nb-ink)] bg-[var(--nb-surface-accent)] flex items-center justify-between text-xs text-[var(--nb-secondary)] shrink-0"
         >
-          <span className="nb-label text-[10px]">CSE (AI & ML) DEPARTMENTAL REGISTRY</span>
+          <span className="nb-label text-[10px]">{(activeTenant?.name || activeTenant?.shortCode || 'INSTITUTIONAL').toUpperCase()} CREDENTIAL REGISTRY</span>
           <button
             onClick={onClose}
             className="nb-btn-ghost px-4 py-1.5 rounded font-bold text-xs uppercase cursor-pointer"
-            style={{ border: '1.5px solid var(--nb-ink)' }}
           >
             Close
           </button>

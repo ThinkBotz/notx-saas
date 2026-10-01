@@ -250,7 +250,7 @@ export default function ProfileView({
           <h3 className="nb-headline text-2xl mt-3 text-[var(--nb-content)]">{user.name}</h3>
           
           <div className="flex items-center gap-2 mt-1.5 flex-wrap justify-center">
-            <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border border-black shadow-[1.5px_1.5px_0_#000] uppercase ${
+            <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border border-[var(--nb-ink)] shadow-[1.5px_1.5px_0_var(--nb-ink)] uppercase ${
               user.role === 'admin' ? 'nb-pill-coral' :
               user.role === 'president' || user.role === 'associate' ? 'nb-pill-purple' :
               user.role === 'coordinator' ? 'nb-pill-blue' : 'nb-pill-green'
@@ -258,7 +258,7 @@ export default function ProfileView({
               {user.role}
             </span>
             {user.rollNumber && (
-              <span className="nb-pill-yellow text-[10px] font-mono font-bold shadow-[1.5px_1.5px_0_#000]">
+              <span className="nb-pill-yellow text-[10px] font-mono font-bold shadow-[1.5px_1.5px_0_var(--nb-ink)]">
                 {user.rollNumber}
               </span>
             )}
@@ -571,7 +571,8 @@ export default function ProfileView({
 
           {/* Badge Top Header */}
           <div 
-            className="p-3 bg-[var(--nb-yellow)] text-neutral-900 flex justify-between items-center border-b-2 border-dashed border-[var(--nb-ink)]"
+            className="p-3 flex justify-between items-center border-b-2 border-dashed border-[var(--nb-ink)]"
+            style={{ backgroundColor: 'var(--tenant-hero-bg)', color: 'var(--tenant-hero-fg)' }}
           >
             <div>
               <span className="font-mono text-[9px] font-bold uppercase tracking-wider block opacity-80">
@@ -581,7 +582,7 @@ export default function ProfileView({
                 OFFICIAL STUDENT PASS
               </span>
             </div>
-            <span className="nb-pill-green text-[9px] font-mono font-bold shadow-[1.5px_1.5px_0_#000]">
+            <span className="nb-pill-green text-[9px] font-mono font-bold shadow-[1.5px_1.5px_0_var(--nb-ink)]">
               VERIFIED ID
             </span>
           </div>
@@ -604,7 +605,7 @@ export default function ProfileView({
               <h5 className="nb-headline text-xl text-[var(--nb-content)] truncate">{user.name}</h5>
               
               <div className="flex items-center justify-center sm:justify-start gap-2 mt-1">
-                <span className="nb-pill-cyan text-[10px] font-mono font-bold shadow-[1.5px_1.5px_0_#000]">
+                <span className="nb-pill-cyan text-[10px] font-mono font-bold shadow-[1.5px_1.5px_0_var(--nb-ink)]">
                   {user.rollNumber}
                 </span>
                 <span className="nb-tag text-[9px] font-mono">
@@ -624,7 +625,7 @@ export default function ProfileView({
                   ))}
                 </div>
                 <p className="font-mono text-[8px] text-[var(--nb-tertiary)] tracking-widest mt-1">
-                  NOTX-CSE-PASS-2024-28
+                  NOTX-{(activeTenant?.shortCode || 'ORG').toUpperCase()}-PASS-{(user.rollNumber || user.uid || 'STU').slice(-6).toUpperCase()}-{new Date().getFullYear()}
                 </p>
               </div>
             </div>
@@ -668,7 +669,7 @@ export default function ProfileView({
                     <h5 className="nb-headline text-sm text-[var(--nb-content)] truncate">{ev.title}</h5>
                     <p className="nb-label text-[9px] text-[var(--nb-secondary)] mt-0.5">{ev.date} • {ev.venue.split(',')[0]}</p>
                   </div>
-                  <span className={`text-[9.5px] font-mono font-bold px-2 py-0.5 rounded border border-black shadow-[1.5px_1.5px_0_#000] uppercase ${
+                  <span className={`text-[9.5px] font-mono font-bold px-2 py-0.5 rounded border border-[var(--nb-ink)] shadow-[1.5px_1.5px_0_var(--nb-ink)] uppercase ${
                     reg.status === 'Attended' 
                       ? 'nb-pill-green' 
                       : reg.status === 'Absent' 
@@ -1044,8 +1045,7 @@ export default function ProfileView({
               <button 
                 onClick={handleLinkGoogle}
                 disabled={isLinkingGoogle}
-                className="w-full flex items-center justify-center gap-2 bg-white text-black font-bold text-xs rounded py-2.5 transition-transform active:scale-95 cursor-pointer"
-                style={{ border: '2px solid var(--nb-ink)', boxShadow: 'var(--shadow-hard-sm)' }}
+                className="w-full nb-btn-ghost flex items-center justify-center gap-2 text-xs font-bold !min-h-[44px] cursor-pointer"
               >
                 {isLinkingGoogle ? (
                   <span className="w-4 h-4 rounded-full border-2 border-neutral-400 border-t-black animate-spin"></span>
@@ -1259,6 +1259,7 @@ export default function ProfileView({
         onClose={() => setShowVerifyModal(false)}
         initialId={verifyInitialId}
         template={certificateTemplate || DEFAULT_CERTIFICATE_TEMPLATE}
+        activeTenant={activeTenant}
       />
 
       {/* Avatar Gallery Modal */}

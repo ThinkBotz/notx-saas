@@ -170,7 +170,7 @@ export default function AnnouncementsView({
             }}
           >
             {/* Top decorative badge */}
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 mb-4 rounded-full nb-pill-cyan text-neutral-900 text-[10px] font-mono font-bold tracking-wider uppercase border-1.5 border-black shadow-[2px_2px_0_#000]">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 mb-4 rounded-full nb-pill-cyan text-neutral-900 text-[10px] font-mono font-bold tracking-wider uppercase border-1.5 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)]">
               <span>★ BULLETIN RADAR ★</span>
             </div>
 
@@ -229,7 +229,7 @@ export default function AnnouncementsView({
                 }}
               >
                 <div className="flex justify-between items-start gap-2">
-                  <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border border-black shadow-[1.5px_1.5px_0_#000] uppercase ${
+                  <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border border-[var(--nb-ink)] shadow-[1.5px_1.5px_0_var(--nb-ink)] uppercase ${
                     item.category === 'Exam' 
                       ? 'nb-pill-coral' 
                       : item.category === 'Workshop' 

@@ -1,14 +1,15 @@
 import React from 'react';
 import { Mail, Linkedin, Shield, Award, Terminal, Heart, Calendar } from 'lucide-react';
-import { UserProfile, DepartmentEvent, AppBranding, DEFAULT_BRANDING } from '../types';
+import { UserProfile, DepartmentEvent, AppBranding, DEFAULT_BRANDING, Tenant } from '../types';
 
 interface MembersViewProps {
   allUsers: UserProfile[];
   events: DepartmentEvent[];
   branding?: AppBranding;
+  activeTenant?: Tenant | null;
 }
 
-export default function MembersView({ allUsers, events, branding = DEFAULT_BRANDING }: MembersViewProps) {
+export default function MembersView({ allUsers, events, branding = DEFAULT_BRANDING, activeTenant }: MembersViewProps) {
   // Sort users into sections
   const patrons = allUsers.filter(u => u.role === 'admin' && !u.isSuperAdmin);
   const executive = allUsers.filter(u => u.role === 'president' || (u.role === 'associate' && u.position?.toLowerCase().includes('president')));
@@ -40,7 +41,7 @@ export default function MembersView({ allUsers, events, branding = DEFAULT_BRAND
       >
         <h3 className="nb-headline text-xl leading-none">Association Directory</h3>
         <p className="nb-label text-xs mt-1 text-[var(--nb-secondary)]">
-          Meet the thinkers and creators powering {branding.appName || 'NOTX'} {branding.tagline || 'Connect'}
+          Meet the thinkers and creators powering {branding.appName || activeTenant?.name || 'NOTX'} {branding.tagline || 'Connect'}
         </p>
       </div>
 
@@ -76,8 +77,8 @@ export default function MembersView({ allUsers, events, branding = DEFAULT_BRAND
                   />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <h5 className="nb-headline text-sm tracking-normal">{member.name}</h5>
-                  <span className="nb-pill-coral text-[9.5px] font-mono font-bold mt-1 inline-block">{member.position}</span>
+                  <h5 className="nb-headline text-sm tracking-normal truncate">{member.name}</h5>
+                  <span className="nb-pill-coral text-[9.5px] font-mono font-bold mt-1 inline-block truncate max-w-full">{member.position}</span>
                   {member.responsibilities && (
                     <p className="text-xs text-[var(--nb-secondary)] mt-2 leading-relaxed font-sans">{member.responsibilities}</p>
                   )}
@@ -85,8 +86,7 @@ export default function MembersView({ allUsers, events, branding = DEFAULT_BRAND
                   <div className="flex gap-2 mt-3 pt-2 border-t border-[var(--nb-divider)]">
                     <a 
                       href={`mailto:${member.email}`} 
-                      className="w-8 h-8 rounded flex items-center justify-center bg-[var(--nb-surface-accent)] hover:bg-[var(--nb-ink)] text-[var(--nb-content)] hover:text-[var(--nb-bg)] transition-colors cursor-pointer"
-                      style={{ border: '1.5px solid var(--nb-ink)' }}
+                      className="nb-btn-icon !min-w-[32px] !min-h-[32px] w-8 h-8 rounded"
                       title="Send Email"
                     >
                       <Mail className="w-3.5 h-3.5" />
@@ -131,8 +131,8 @@ export default function MembersView({ allUsers, events, branding = DEFAULT_BRAND
                   />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <h5 className="nb-headline text-sm tracking-normal">{member.name}</h5>
-                  <span className="nb-pill-yellow text-[9.5px] font-mono font-bold mt-1 inline-block">
+                  <h5 className="nb-headline text-sm tracking-normal truncate">{member.name}</h5>
+                  <span className="nb-pill-yellow text-[9.5px] font-mono font-bold mt-1 inline-block truncate max-w-full">
                     {member.position} {member.year ? `• ${member.year}` : ''}
                   </span>
                   {member.responsibilities && (
@@ -142,8 +142,7 @@ export default function MembersView({ allUsers, events, branding = DEFAULT_BRAND
                   <div className="flex gap-2 mt-3 pt-2 border-t border-[var(--nb-divider)]">
                     <a 
                       href={`mailto:${member.email}`} 
-                      className="w-8 h-8 rounded flex items-center justify-center bg-[var(--nb-surface-accent)] hover:bg-[var(--nb-ink)] text-[var(--nb-content)] hover:text-[var(--nb-bg)] transition-colors cursor-pointer"
-                      style={{ border: '1.5px solid var(--nb-ink)' }}
+                      className="nb-btn-icon !min-w-[32px] !min-h-[32px] w-8 h-8 rounded"
                       title="Send Email"
                     >
                       <Mail className="w-3.5 h-3.5" />
@@ -153,8 +152,7 @@ export default function MembersView({ allUsers, events, branding = DEFAULT_BRAND
                         href={member.linkedin} 
                         target="_blank" 
                         rel="noopener noreferrer" 
-                        className="w-8 h-8 rounded flex items-center justify-center bg-[var(--nb-surface-accent)] hover:bg-[#0A66C2] text-[var(--nb-content)] hover:text-white transition-colors cursor-pointer"
-                        style={{ border: '1.5px solid var(--nb-ink)' }}
+                        className="nb-btn-icon !min-w-[32px] !min-h-[32px] w-8 h-8 rounded hover:text-[#0A66C2]"
                         title="LinkedIn"
                       >
                         <Linkedin className="w-3.5 h-3.5" />
@@ -211,8 +209,7 @@ export default function MembersView({ allUsers, events, branding = DEFAULT_BRAND
                   <div className="flex gap-2 mt-3 pt-2 border-t border-[var(--nb-divider)]">
                     <a 
                       href={`mailto:${member.email}`} 
-                      className="w-8 h-8 rounded flex items-center justify-center bg-[var(--nb-surface-accent)] hover:bg-[var(--nb-ink)] text-[var(--nb-content)] hover:text-[var(--nb-bg)] transition-colors cursor-pointer"
-                      style={{ border: '1.5px solid var(--nb-ink)' }}
+                      className="nb-btn-icon !min-w-[32px] !min-h-[32px] w-8 h-8 rounded"
                       title="Send Email"
                     >
                       <Mail className="w-3.5 h-3.5" />
@@ -222,8 +219,7 @@ export default function MembersView({ allUsers, events, branding = DEFAULT_BRAND
                         href={member.linkedin} 
                         target="_blank" 
                         rel="noopener noreferrer" 
-                        className="w-8 h-8 rounded flex items-center justify-center bg-[var(--nb-surface-accent)] hover:bg-[#0A66C2] text-[var(--nb-content)] hover:text-white transition-colors cursor-pointer"
-                        style={{ border: '1.5px solid var(--nb-ink)' }}
+                        className="nb-btn-icon !min-w-[32px] !min-h-[32px] w-8 h-8 rounded hover:text-[#0A66C2]"
                         title="LinkedIn"
                       >
                         <Linkedin className="w-3.5 h-3.5" />
@@ -283,15 +279,14 @@ export default function MembersView({ allUsers, events, branding = DEFAULT_BRAND
                           />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <h6 className="nb-headline text-xs tracking-normal">{member.name}</h6>
-                          <span className="nb-pill-purple text-[9px] font-mono font-bold mt-1 inline-block">
+                          <h6 className="nb-headline text-xs tracking-normal truncate">{member.name}</h6>
+                          <span className="nb-pill-purple text-[9px] font-mono font-bold mt-1 inline-block truncate max-w-full">
                             {member.position} {member.year ? `• ${member.year}` : ''}
                           </span>
                           <div className="flex gap-2 mt-2">
                             <a 
                               href={`mailto:${member.email}`} 
-                              className="w-6 h-6 rounded flex items-center justify-center bg-[var(--nb-surface)] hover:bg-[var(--nb-ink)] text-[var(--nb-content)] hover:text-[var(--nb-bg)] transition-colors cursor-pointer"
-                              style={{ border: '1px solid var(--nb-ink)' }}
+                              className="nb-btn-icon !min-w-[28px] !min-h-[28px] w-7 h-7 rounded"
                               title="Send Email"
                             >
                               <Mail className="w-3 h-3" />
@@ -301,8 +296,7 @@ export default function MembersView({ allUsers, events, branding = DEFAULT_BRAND
                                 href={member.linkedin} 
                                 target="_blank" 
                                 rel="noopener noreferrer" 
-                                className="w-6 h-6 rounded flex items-center justify-center bg-[var(--nb-surface)] hover:bg-[#0A66C2] text-[var(--nb-content)] hover:text-white transition-colors cursor-pointer"
-                                style={{ border: '1px solid var(--nb-ink)' }}
+                                className="nb-btn-icon !min-w-[28px] !min-h-[28px] w-7 h-7 rounded hover:text-[#0A66C2]"
                                 title="LinkedIn"
                               >
                                 <Linkedin className="w-3 h-3" />

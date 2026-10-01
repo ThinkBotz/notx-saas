@@ -17,7 +17,7 @@ import {
   Award,
   GraduationCap
 } from 'lucide-react';
-import { EventWinner, UserProfile } from '../types';
+import { EventWinner, UserProfile, Tenant } from '../types';
 import HoldButton from './HoldButton';
 
 interface WinnerDetailsModalProps {
@@ -27,6 +27,7 @@ interface WinnerDetailsModalProps {
   canManageWinners?: boolean;
   onEdit?: (winner: EventWinner) => void;
   onDelete?: (winner: EventWinner) => void;
+  activeTenant?: Tenant | null;
 }
 
 export default function WinnerDetailsModal({
@@ -35,7 +36,8 @@ export default function WinnerDetailsModal({
   onClose,
   canManageWinners = false,
   onEdit,
-  onDelete
+  onDelete,
+  activeTenant
 }: WinnerDetailsModalProps) {
   const [copied, setCopied] = useState(false);
 
@@ -56,7 +58,9 @@ export default function WinnerDetailsModal({
   const rankIcon = isFirst ? '🏆' : isSecond ? '🥈' : isThird ? '🥉' : '🌟';
 
   const handleCopyCitation = () => {
-    const text = `🏆 Wall of Champions: Congratulations to ${winner.studentName} (${winner.rollNumber || 'AIML'}) for securing ${winner.position} [${winner.prizeTitle || 'Champion'}] in "${winner.eventTitle}"! ${winner.awardDetails ? `Award: ${winner.awardDetails}.` : ''} #DepartmentOfAIML #NOTXConnect`;
+    const code = (activeTenant?.shortCode || 'ORG').replace(/[^a-zA-Z0-9]/g, '');
+    const deptTag = activeTenant?.name ? `#${activeTenant.name.replace(/[^a-zA-Z0-9]/g, '')}` : `#${code}`;
+    const text = `🏆 Wall of Champions: Congratulations to ${winner.studentName} (${winner.rollNumber || code}) for securing ${winner.position} [${winner.prizeTitle || 'Champion'}] in "${winner.eventTitle}"! ${winner.awardDetails ? `Award: ${winner.awardDetails}.` : ''} ${deptTag} #NOTXConnect`;
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -140,7 +144,7 @@ export default function WinnerDetailsModal({
                   </span>
                 )}
                 <span className="nb-label text-[11px] text-[var(--nb-secondary)] truncate">
-                  {winner.department || 'CSE (AI & ML)'}
+                  {winner.department || activeTenant?.shortCode || activeTenant?.name || 'Department'}
                 </span>
                 {(winner.year || winner.section) && (
                   <span className="nb-label text-[10px] text-[var(--nb-secondary)]">

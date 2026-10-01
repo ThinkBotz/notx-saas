@@ -5,7 +5,7 @@ import FlipCard from './FlipCard';
 import HoldButton from './HoldButton';
 import EventTicketModal from './EventTicketModal';
 import { fireConfetti } from '../utils/confetti';
-import { UserProfile, DepartmentEvent, EventRegistration, IssuedCertificate, AppBranding, DEFAULT_BRANDING } from '../types';
+import { UserProfile, DepartmentEvent, EventRegistration, IssuedCertificate, AppBranding, DEFAULT_BRANDING, Tenant } from '../types';
 import { createEvent, createRegistration, updateRegistrationStatus, updateRegistrationTeamMembers, deleteRegistration, deleteCertificate, deleteEvent, updateEvent, subscribeToCertificates, generateBatchCertificatesForEvent } from '../firebase';
 
 interface EventsViewProps {
@@ -21,6 +21,7 @@ interface EventsViewProps {
   onMessageCoordinator?: (roll: string) => void;
   branding?: AppBranding;
   activeTenantId?: string;
+  activeTenant?: Tenant | null;
 }
 
 // Helper: Convert "10:00 AM" or "10:00" to 24h "10:00" or "14:00" for input[type="time"]
@@ -132,7 +133,8 @@ export default function EventsView({
   isLoading = false,
   onMessageCoordinator,
   branding = DEFAULT_BRANDING,
-  activeTenantId
+  activeTenantId,
+  activeTenant
 }: EventsViewProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [eventImageIdx, setEventImageIdx] = useState(0);
@@ -936,7 +938,7 @@ export default function EventsView({
             }}
           >
             {/* Top decorative pill */}
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 mb-4 rounded-full nb-pill-yellow text-neutral-900 text-[10px] font-mono font-bold tracking-wider uppercase border-1.5 border-black shadow-[2px_2px_0_#000]">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 mb-4 rounded-full nb-pill-yellow text-neutral-900 text-[10px] font-mono font-bold tracking-wider uppercase border-1.5 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)]">
               <span>★ ARENA RADAR ★</span>
             </div>
 
@@ -1052,12 +1054,12 @@ export default function EventsView({
                         />
 
                         {/* Solid high-contrast backing at bottom for brutalist legibility */}
-                        <div className="absolute inset-x-0 bottom-0 h-16 bg-black/85 border-t border-black pointer-events-none z-10" />
+                        <div className="absolute inset-x-0 bottom-0 h-16 bg-black/85 border-t border-[var(--nb-ink)] pointer-events-none z-10" />
 
                         {/* Top Badges: Category only */}
                         {event.category && (
                           <div className="absolute top-2.5 left-2.5 z-20 pointer-events-none">
-                            <span className={`text-[9.5px] font-mono font-bold px-2 py-0.5 rounded shadow-[2px_2px_0_#000] border border-black uppercase ${event.category === 'Workshops' ? 'nb-pill-blue' :
+                            <span className={`text-[9.5px] font-mono font-bold px-2 py-0.5 rounded shadow-[2px_2px_0_var(--nb-ink)] border border-[var(--nb-ink)] uppercase ${event.category === 'Workshops' ? 'nb-pill-blue' :
                                 event.category === 'Hackathons' ? 'nb-pill-purple' :
                                   event.category === 'Seminars' ? 'nb-pill-green' :
                                     event.category === 'Cultural Events' ? 'nb-pill-pink' :
@@ -1070,7 +1072,7 @@ export default function EventsView({
 
                         {/* Front face Bottom content: ONLY event name and date on cover */}
                         <div className="relative z-20 p-2.5 space-y-1.5 pointer-events-none">
-                          <div className="inline-flex items-center gap-1.5 text-neutral-900 text-[9.5px] font-mono font-bold nb-pill-yellow px-2 py-0.5 rounded shadow-[2px_2px_0_#000] border border-black">
+                          <div className="inline-flex items-center gap-1.5 text-neutral-900 text-[9.5px] font-mono font-bold nb-pill-yellow px-2 py-0.5 rounded shadow-[2px_2px_0_var(--nb-ink)] border border-[var(--nb-ink)]">
                             <Calendar className="w-2.5 h-2.5 text-neutral-900" />
                             {event.date}
                           </div>
@@ -1086,7 +1088,7 @@ export default function EventsView({
                         <div className="space-y-1.5">
                           {/* Header with category and flip back hint */}
                           <div className="flex items-center justify-between border-b border-white/10 pb-1.5">
-                            <span className={`text-[9.5px] font-mono font-bold px-2 py-0.5 rounded border border-black shadow-[1.5px_1.5px_0_#000] uppercase ${event.category === 'Workshops' ? 'nb-pill-blue' :
+                            <span className={`text-[9.5px] font-mono font-bold px-2 py-0.5 rounded border border-[var(--nb-ink)] shadow-[1.5px_1.5px_0_var(--nb-ink)] uppercase ${event.category === 'Workshops' ? 'nb-pill-blue' :
                                 event.category === 'Hackathons' ? 'nb-pill-purple' :
                                   event.category === 'Seminars' ? 'nb-pill-green' :
                                     event.category === 'Cultural Events' ? 'nb-pill-pink' :
@@ -1190,7 +1192,7 @@ export default function EventsView({
                               setSelectedEvent(event);
                               setEventImageIdx(0);
                             }}
-                            className="flex-1 py-1.5 px-2.5 rounded bg-[var(--nb-yellow)] hover:bg-[#FFE600] text-black border-2 border-black text-[10px] font-mono font-bold tracking-tight shadow-[2px_2px_0_#000] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all flex items-center justify-center gap-1 cursor-pointer"
+                            className="flex-1 py-1.5 px-2.5 rounded bg-[var(--nb-yellow)] hover:bg-[#FFE600] text-black border-2 border-[var(--nb-ink)] text-[10px] font-mono font-bold tracking-tight shadow-[2px_2px_0_var(--nb-ink)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all flex items-center justify-center gap-1 cursor-pointer"
                           >
                             <FileText className="w-3.5 h-3.5" />
                             View Event & Register
@@ -1240,10 +1242,11 @@ export default function EventsView({
           >
             {/* Laminated Event Pass Header */}
             <div
-              className="p-3 sm:p-4 flex justify-between items-center flex-shrink-0 bg-[var(--nb-yellow)] text-neutral-900 border-b-2 border-dashed border-[var(--nb-ink)]"
+              className="p-3 sm:p-4 flex justify-between items-center flex-shrink-0 border-b-2 border-dashed border-[var(--nb-ink)]"
+              style={{ backgroundColor: 'var(--tenant-hero-bg)', color: 'var(--tenant-hero-fg)' }}
             >
               <div className="flex items-center gap-2 flex-wrap">
-                <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border border-black shadow-[1.5px_1.5px_0_#000] uppercase ${selectedEvent.category === 'Workshops' ? 'nb-pill-blue text-white' :
+                <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border border-[var(--nb-ink)] shadow-[1.5px_1.5px_0_var(--nb-ink)] uppercase ${selectedEvent.category === 'Workshops' ? 'nb-pill-blue text-white' :
                     selectedEvent.category === 'Hackathons' ? 'nb-pill-purple text-white' :
                       selectedEvent.category === 'Seminars' ? 'nb-pill-green text-black' :
                         selectedEvent.category === 'Cultural Events' ? 'nb-pill-pink text-white' :
@@ -1251,16 +1254,16 @@ export default function EventsView({
                   }`}>
                   {selectedEvent.category}
                 </span>
-                <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded bg-black text-white border border-black shadow-[1.5px_1.5px_0_rgba(0,0,0,0.3)]">
+                <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded bg-black text-white border border-[var(--nb-ink)] shadow-[1.5px_1.5px_0_var(--nb-ink)]">
                   PASS #{selectedEvent.eventId.slice(-4).toUpperCase()}
                 </span>
-                <span className="nb-pill-coral text-[9px] font-mono font-bold uppercase hidden sm:inline-block shadow-[1.5px_1.5px_0_#000]">
+                <span className="nb-pill-coral text-[9px] font-mono font-bold uppercase hidden sm:inline-block shadow-[1.5px_1.5px_0_var(--nb-ink)]">
                   ★ ADMIT ONE
                 </span>
               </div>
               <button
                 onClick={() => setSelectedEvent(null)}
-                className="w-8 h-8 rounded-md bg-white text-black hover:bg-neutral-100 flex items-center justify-center border-2 border-black shadow-[2px_2px_0_#000] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none cursor-pointer transition-all"
+                className="w-8 h-8 rounded-md bg-[var(--nb-surface)] text-[var(--nb-content)] hover:bg-[var(--nb-surface-accent)] flex items-center justify-center border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none cursor-pointer transition-all"
                 title="Close"
               >
                 <X className="w-4 h-4 stroke-[2.5]" />
@@ -1288,7 +1291,7 @@ export default function EventsView({
                     <button
                       type="button"
                       onClick={() => setEventImageIdx(prev => (prev === 0 ? selectedEvent.images!.length - 1 : prev - 1))}
-                      className="absolute left-2.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded bg-black text-white flex items-center justify-center border-2 border-white transition-all cursor-pointer shadow-[2px_2px_0_#000] active:translate-x-0.5 active:translate-y-0.5"
+                      className="absolute left-2.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded bg-black text-white flex items-center justify-center border-2 border-white transition-all cursor-pointer shadow-[2px_2px_0_var(--nb-ink)] active:translate-x-0.5 active:translate-y-0.5"
                       aria-label="Previous photo"
                     >
                       <ChevronLeft className="w-4 h-4 stroke-[2.5]" />
@@ -1297,7 +1300,7 @@ export default function EventsView({
                     <button
                       type="button"
                       onClick={() => setEventImageIdx(prev => (prev === selectedEvent.images!.length - 1 ? 0 : prev + 1))}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded bg-black text-white flex items-center justify-center border-2 border-white transition-all cursor-pointer shadow-[2px_2px_0_#000] active:translate-x-0.5 active:translate-y-0.5"
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded bg-black text-white flex items-center justify-center border-2 border-white transition-all cursor-pointer shadow-[2px_2px_0_var(--nb-ink)] active:translate-x-0.5 active:translate-y-0.5"
                       aria-label="Next photo"
                     >
                       <ChevronRight className="w-4 h-4 stroke-[2.5]" />
@@ -1358,7 +1361,7 @@ export default function EventsView({
                         <Users className="w-4 h-4 text-[var(--nb-blue)]" />
                         Live Capacity Tracker
                       </span>
-                      <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded uppercase border border-black shadow-[1.5px_1.5px_0_#000] ${isHouseFull
+                      <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded uppercase border border-[var(--nb-ink)] shadow-[1.5px_1.5px_0_var(--nb-ink)] ${isHouseFull
                           ? 'nb-pill-coral'
                           : spotsLeft <= 10
                             ? 'nb-pill-coral'
@@ -1398,7 +1401,7 @@ export default function EventsView({
                     <Clock className="w-4 h-4 text-black" />
                     Registration Deadline
                   </span>
-                  <span className="bg-black text-[#FFE600] px-2.5 py-0.5 rounded text-[11px] font-bold border border-black">
+                  <span className="bg-black text-[#FFE600] px-2.5 py-0.5 rounded text-[11px] font-bold border border-[var(--nb-ink)]">
                     {selectedEvent.registrationDeadline}
                   </span>
                 </div>
@@ -1655,7 +1658,8 @@ export default function EventsView({
                         <button
                           type="button"
                           onClick={() => setShowTicketModal(true)}
-                          className="w-full mt-2.5 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-xs font-mono font-black uppercase transition-all cursor-pointer bg-[var(--nb-yellow)] text-black border-2 border-black shadow-[2.5px_2.5px_0_#000] hover:brightness-105 active:translate-x-0.5 active:translate-y-0.5"
+                          className="w-full mt-2.5 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-xs font-mono font-black uppercase transition-all cursor-pointer border-2 border-[var(--nb-ink)] shadow-[2.5px_2.5px_0_var(--nb-ink)] hover:brightness-105 active:translate-x-0.5 active:translate-y-0.5"
+                          style={{ backgroundColor: 'var(--tenant-hero-bg)', color: 'var(--tenant-hero-fg)' }}
                         >
                           <Ticket className="w-4 h-4 stroke-[2.5]" />
                           View Digital Event Pass (QR)
@@ -1678,7 +1682,7 @@ export default function EventsView({
                                 type="button"
                                 onClick={handleWithdraw}
                                 disabled={isWithdrawing}
-                                className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-md text-xs font-mono font-bold uppercase transition-all cursor-pointer nb-pill-coral text-white border-2 border-black shadow-[2px_2px_0_#000] hover:brightness-110 active:translate-x-0.5 active:translate-y-0.5 disabled:opacity-50"
+                                className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-md text-xs font-mono font-bold uppercase transition-all cursor-pointer nb-pill-coral text-white border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)] hover:brightness-110 active:translate-x-0.5 active:translate-y-0.5 disabled:opacity-50"
                               >
                                 {isWithdrawing ? (
                                   <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
@@ -1815,7 +1819,6 @@ export default function EventsView({
                                   setDraftRoll('');
                                 }}
                                 className="w-full nb-btn-ghost py-1.5 text-[10px] font-bold cursor-pointer"
-                                style={{ border: '1px solid var(--nb-ink)' }}
                               >
                                 + Add Member to Team List
                               </button>
@@ -1899,7 +1902,7 @@ export default function EventsView({
                         style={{ border: '1px solid var(--nb-ink)' }}
                       >
                         <span>{batchFeedback}</span>
-                        <button onClick={() => setBatchFeedback('')} className="cursor-pointer">
+                        <button onClick={() => setBatchFeedback('')} className="p-1 rounded hover:bg-[var(--nb-surface)] cursor-pointer transition-colors" aria-label="Dismiss">
                           <X className="w-3.5 h-3.5" />
                         </button>
                       </div>
@@ -2209,7 +2212,7 @@ export default function EventsView({
                           }}
                           className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded border transition-all cursor-pointer whitespace-nowrap ${
                             eventDuration === durString
-                              ? 'nb-pill-yellow text-black border-black shadow-[1.5px_1.5px_0_#000]'
+                              ? 'nb-pill-yellow text-black border-[var(--nb-ink)] shadow-[1.5px_1.5px_0_var(--nb-ink)]'
                               : 'bg-[var(--nb-surface-accent)] border-[1.5px] border-[var(--nb-ink)] text-[var(--nb-content)] hover:bg-[var(--nb-surface)]'
                           }`}
                         >
@@ -2397,7 +2400,7 @@ export default function EventsView({
                                 type="button"
                                 onClick={() => toggleCoordinatorName(c.name)}
                                 className={`inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded border transition-all cursor-pointer font-bold ${isSelected
-                                    ? 'bg-[var(--nb-green)] text-neutral-900 border-[1.5px] border-black shadow-[1.5px_1.5px_0_#000]'
+                                    ? 'bg-[var(--nb-green)] text-neutral-900 border-[1.5px] border-[var(--nb-ink)] shadow-[1.5px_1.5px_0_var(--nb-ink)]'
                                     : 'bg-[var(--nb-surface-accent)] hover:bg-[var(--nb-surface)] text-[var(--nb-content)] border-[1.5px] border-[var(--nb-ink)]'
                                   }`}
                               >
@@ -2477,7 +2480,7 @@ export default function EventsView({
                   rows={2}
                   value={eventRules}
                   onChange={(e) => setEventRules(e.target.value)}
-                  placeholder="1. Open only to CSE students&#10;2. Max 4 members..."
+                  placeholder={`1. Open only to registered ${activeTenant?.shortCode || 'department'} students\n2. Max 4 members...`}
                   className="nb-input !text-xs !py-2 !px-3 resize-none leading-relaxed"
                 />
               </div>
@@ -2620,7 +2623,7 @@ export default function EventsView({
                               </span>
                             </div>
                             <div className="text-[10px] text-secondary font-mono truncate">
-                              {u.rollNumber || 'N/A'} • {u.department || 'CSE (AI & ML)'} • {u.year || '3rd Year'}
+                              {u.rollNumber || 'N/A'} • {u.department || activeTenant?.shortCode || activeTenant?.name || 'Department'} • {u.year || '3rd Year'}
                             </div>
                           </div>
                         </div>

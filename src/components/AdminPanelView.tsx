@@ -241,13 +241,25 @@ export default function AdminPanelView({
   const [isEditCertModalOpen, setIsEditCertModalOpen] = useState(false);
 
   const [branding, setBranding] = useState<AppBranding>(() => {
-    const cached = localStorage.getItem('notx_branding');
+    if (activeTenant?.branding) {
+      return activeTenant.branding;
+    }
+    const cleanTid = activeTenantIdResolved.trim().toLowerCase();
+    const cacheKey = cleanTid ? `notx_branding_${cleanTid}` : 'notx_branding';
+    const cached = localStorage.getItem(cacheKey);
     if (cached) {
       try { return JSON.parse(cached) as AppBranding; } catch (e) { }
     }
     return DEFAULT_BRANDING;
   });
   const [isEditBrandingModalOpen, setIsEditBrandingModalOpen] = useState(false);
+
+  // Sync branding whenever activeTenant changes
+  useEffect(() => {
+    if (activeTenant?.branding) {
+      setBranding(activeTenant.branding);
+    }
+  }, [activeTenant?.branding]);
 
   useEffect(() => {
     const unsub = subscribeToAppConfig(config => {
@@ -263,7 +275,9 @@ export default function AdminPanelView({
       }
       if (config.branding) {
         setBranding(config.branding);
-        try { localStorage.setItem('notx_branding', JSON.stringify(config.branding)); } catch (e) { }
+        const cleanTid = activeTenantIdResolved.trim().toLowerCase();
+        const cacheKey = cleanTid ? `notx_branding_${cleanTid}` : 'notx_branding';
+        try { localStorage.setItem(cacheKey, JSON.stringify(config.branding)); } catch (e) { }
       }
     }, activeTenantIdResolved);
     return () => unsub();
@@ -433,7 +447,7 @@ export default function AdminPanelView({
       return;
     }
 
-    const certId = generateCertificateId(targetStudent.rollNumber, targetEvent.eventId);
+    const certId = generateCertificateId(targetStudent.rollNumber, targetEvent.eventId, activeTenant?.shortCode);
     try {
       await issueCertificate({
         certificateId: certId,
@@ -444,7 +458,7 @@ export default function AdminPanelView({
         studentId: targetStudent.uid,
         studentName: targetStudent.name,
         rollNumber: targetStudent.rollNumber || 'N/A',
-        department: targetStudent.department || 'CSE (AI & ML)',
+        department: targetStudent.department || activeTenant?.shortCode || activeTenant?.name || 'Department',
         year: targetStudent.year || 'III Year',
         section: targetStudent.section || 'A',
         issueDate: targetEvent.date || new Date().toISOString().split('T')[0],
@@ -1105,52 +1119,49 @@ export default function AdminPanelView({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/80">
+    <div className="fixed inset-0 z-50 flex items-center justify-center sm:p-4 bg-black/80">
       <div
-        className="bg-[var(--nb-surface)] text-[var(--nb-content)] w-full max-w-5xl h-[95dvh] sm:h-[90dvh] rounded-lg flex flex-col overflow-hidden relative"
-        style={{ border: '2.5px solid var(--nb-ink)', boxShadow: 'var(--shadow-hard-lg)' }}
+        className="bg-[var(--nb-surface)] text-[var(--nb-content)] w-full max-w-5xl h-full sm:h-[90dvh] sm:rounded-lg flex flex-col overflow-hidden relative border-0 sm:border-[2.5px] sm:border-[var(--nb-ink)] shadow-none sm:shadow-[var(--shadow-hard-lg)]"
       >
         {/* Header */}
         <div
-          className="flex justify-between items-center p-3.5 sm:p-4 bg-[var(--nb-surface-accent)] gap-3"
+          className="flex justify-between items-center p-3 sm:p-4 bg-[var(--nb-surface-accent)] gap-2 sm:gap-3"
           style={{ borderBottom: '2px solid var(--nb-ink)' }}
         >
-          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <BrandLogo branding={branding} size="sm" />
             <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-nowrap">
-                <h2 className="nb-headline text-sm sm:text-base tracking-wide truncate">
+              <div className="flex items-center gap-1.5 sm:gap-2 flex-nowrap">
+                <h2 className="nb-headline text-xs sm:text-base tracking-wide truncate">
                   {branding.appName || 'NOTX'} Admin Console
                 </h2>
                 {branding.subtitle && (
-                  <span className="nb-tag text-[9px] hidden xs:inline-block">
+                  <span className="nb-tag text-[8px] sm:text-[9px] hidden xs:inline-block">
                     {branding.subtitle}
                   </span>
                 )}
               </div>
-              <p className="nb-label text-[9px] sm:text-[10px] text-[var(--nb-secondary)] truncate">Elevated Privileges Active</p>
+              <p className="nb-label text-[8px] sm:text-[10px] text-[var(--nb-secondary)] truncate">Elevated Privileges Active</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {/* Copy Tenant Student Invite Link */}
             <button
               type="button"
               onClick={handleCopyInviteLink}
-              className="nb-btn-ghost px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-xs font-bold flex items-center gap-1.5 cursor-pointer text-emerald-600 dark:text-emerald-400"
-              style={{ border: '1.5px solid var(--nb-ink)' }}
+              className="nb-btn-ghost px-2 sm:px-3 py-1.5 text-[11px] sm:text-xs font-bold flex items-center gap-1.5 cursor-pointer text-emerald-600 dark:text-emerald-400"
               title="Copy student invite link for this department"
             >
               {copiedInviteLink ? (
                 <>
                   <Check className="w-3.5 h-3.5 text-emerald-500" />
-                  <span>Invite Copied!</span>
+                  <span className="hidden sm:inline">Invite Copied!</span>
                 </>
               ) : (
                 <>
                   <Copy className="w-3.5 h-3.5" />
                   <span className="hidden sm:inline">Invite Link</span>
-                  <span className="sm:hidden">Invite</span>
                 </>
               )}
             </button>
@@ -1159,19 +1170,16 @@ export default function AdminPanelView({
               <button
                 type="button"
                 onClick={() => setIsEditBrandingModalOpen(true)}
-                className="nb-btn-ghost px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-xs font-bold flex items-center gap-1.5 cursor-pointer"
-                style={{ border: '1.5px solid var(--nb-ink)' }}
+                className="nb-btn-ghost px-2 sm:px-3 py-1.5 text-[11px] sm:text-xs font-bold flex items-center gap-1.5 cursor-pointer"
                 title="Change brand name (NOTX) and logo dynamically"
               >
                 <SlidersHorizontal className="w-3.5 h-3.5 text-[var(--nb-accent)]" />
                 <span className="hidden sm:inline">Change Name & Logo</span>
-                <span className="sm:hidden">Name & Logo</span>
               </button>
             )}
             <button
               onClick={onClose}
-              className="w-8 h-8 rounded bg-[var(--nb-surface)] text-[var(--nb-content)] flex items-center justify-center cursor-pointer transition-transform active:scale-95"
-              style={{ border: '1.5px solid var(--nb-ink)' }}
+              className="nb-btn-icon !w-8 !h-8 rounded cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
@@ -1179,74 +1187,77 @@ export default function AdminPanelView({
         </div>
 
         {/* Navigation Tabs */}
-        <div
-          className="flex px-3 pt-2.5 pb-2 gap-2 overflow-x-auto bg-[var(--nb-surface)] scrollbar-none"
-          style={{ borderBottom: '2px solid var(--nb-ink)' }}
-        >
-          {canManageRoles && (
-            <>
-              <button
-                onClick={() => setActiveTab('associates')}
-                className={`py-1.5 px-3 text-xs font-mono font-bold uppercase tracking-wider rounded-md transition-all cursor-pointer ${activeTab === 'associates'
-                    ? 'nb-pill-blue text-white border-2 border-[var(--nb-ink)] shadow-[2.5px_2.5px_0_var(--nb-ink)]'
-                    : 'bg-[var(--nb-surface-accent)] text-[var(--nb-secondary)] border-1.5 border-[var(--nb-divider)] hover:border-[var(--nb-ink)] hover:text-[var(--nb-content)]'
-                  }`}
-              >
-                Associates
-              </button>
-              <button
-                onClick={() => setActiveTab('coordinators')}
-                className={`py-1.5 px-3 text-xs font-mono font-bold uppercase tracking-wider rounded-md transition-all cursor-pointer ${activeTab === 'coordinators'
-                    ? 'nb-pill-cyan text-white border-2 border-[var(--nb-ink)] shadow-[2.5px_2.5px_0_var(--nb-ink)]'
-                    : 'bg-[var(--nb-surface-accent)] text-[var(--nb-secondary)] border-1.5 border-[var(--nb-divider)] hover:border-[var(--nb-ink)] hover:text-[var(--nb-content)]'
-                  }`}
-              >
-                Coordinators
-              </button>
-              <button
-                onClick={() => setActiveTab('students')}
-                className={`py-1.5 px-3 text-xs font-mono font-bold uppercase tracking-wider rounded-md transition-all cursor-pointer ${activeTab === 'students'
-                    ? 'nb-pill-yellow text-neutral-900 border-2 border-[var(--nb-ink)] shadow-[2.5px_2.5px_0_var(--nb-ink)]'
-                    : 'bg-[var(--nb-surface-accent)] text-[var(--nb-secondary)] border-1.5 border-[var(--nb-divider)] hover:border-[var(--nb-ink)] hover:text-[var(--nb-content)]'
-                  }`}
-              >
-                Students DB
-              </button>
-              <button
-                onClick={() => setActiveTab('certificates')}
-                className={`py-1.5 px-3 text-xs font-mono font-bold uppercase tracking-wider rounded-md transition-all cursor-pointer flex items-center gap-1.5 ${activeTab === 'certificates'
-                    ? 'nb-pill-purple text-white border-2 border-[var(--nb-ink)] shadow-[2.5px_2.5px_0_var(--nb-ink)]'
-                    : 'bg-[var(--nb-surface-accent)] text-[var(--nb-secondary)] border-1.5 border-[var(--nb-divider)] hover:border-[var(--nb-ink)] hover:text-[var(--nb-content)]'
-                  }`}
-              >
-                <Award className={`w-3.5 h-3.5 ${activeTab === 'certificates' ? 'text-white' : 'text-[var(--nb-accent)]'}`} />
-                <span>Certificates</span>
-                <span className={`w-2 h-2 rounded-full ${isCertificatesEnabled ? 'bg-emerald-400' : 'bg-amber-400'}`} />
-              </button>
-              <button
-                onClick={() => setActiveTab('settings')}
-                className={`py-1.5 px-3 text-xs font-mono font-bold uppercase tracking-wider rounded-md transition-all cursor-pointer flex items-center gap-1.5 ${activeTab === 'settings'
-                    ? 'nb-pill-coral text-white border-2 border-[var(--nb-ink)] shadow-[2.5px_2.5px_0_var(--nb-ink)]'
-                    : 'bg-[var(--nb-surface-accent)] text-[var(--nb-secondary)] border-1.5 border-[var(--nb-divider)] hover:border-[var(--nb-ink)] hover:text-[var(--nb-content)]'
-                  }`}
-              >
-                <Settings className="w-3.5 h-3.5" />
-                Settings
-              </button>
-            </>
-          )}
+        <div className="relative bg-[var(--nb-surface)]" style={{ borderBottom: '2px solid var(--nb-ink)' }}>
+          <div
+            className="flex px-3 pt-2.5 pb-2 gap-2 overflow-x-auto scrollbar-none scroll-smooth touch-pan-x"
+          >
+            {canManageRoles && (
+              <>
+                <button
+                  onClick={() => setActiveTab('associates')}
+                  className={`py-1.5 px-3 text-xs font-mono font-bold uppercase tracking-wider rounded-md transition-all cursor-pointer shrink-0 whitespace-nowrap ${activeTab === 'associates'
+                      ? 'nb-pill-blue text-white border-2 border-[var(--nb-ink)] shadow-[2.5px_2.5px_0_var(--nb-ink)]'
+                      : 'bg-[var(--nb-surface-accent)] text-[var(--nb-secondary)] border-1.5 border-[var(--nb-divider)] hover:border-[var(--nb-ink)] hover:text-[var(--nb-content)]'
+                    }`}
+                >
+                  Associates
+                </button>
+                <button
+                  onClick={() => setActiveTab('coordinators')}
+                  className={`py-1.5 px-3 text-xs font-mono font-bold uppercase tracking-wider rounded-md transition-all cursor-pointer shrink-0 whitespace-nowrap ${activeTab === 'coordinators'
+                      ? 'nb-pill-cyan text-white border-2 border-[var(--nb-ink)] shadow-[2.5px_2.5px_0_var(--nb-ink)]'
+                      : 'bg-[var(--nb-surface-accent)] text-[var(--nb-secondary)] border-1.5 border-[var(--nb-divider)] hover:border-[var(--nb-ink)] hover:text-[var(--nb-content)]'
+                    }`}
+                >
+                  Coordinators
+                </button>
+                <button
+                  onClick={() => setActiveTab('students')}
+                  className={`py-1.5 px-3 text-xs font-mono font-bold uppercase tracking-wider rounded-md transition-all cursor-pointer shrink-0 whitespace-nowrap ${activeTab === 'students'
+                      ? 'nb-pill-yellow text-neutral-900 border-2 border-[var(--nb-ink)] shadow-[2.5px_2.5px_0_var(--nb-ink)]'
+                      : 'bg-[var(--nb-surface-accent)] text-[var(--nb-secondary)] border-1.5 border-[var(--nb-divider)] hover:border-[var(--nb-ink)] hover:text-[var(--nb-content)]'
+                    }`}
+                >
+                  Students DB
+                </button>
+                <button
+                  onClick={() => setActiveTab('certificates')}
+                  className={`py-1.5 px-3 text-xs font-mono font-bold uppercase tracking-wider rounded-md transition-all cursor-pointer flex items-center gap-1.5 shrink-0 whitespace-nowrap ${activeTab === 'certificates'
+                      ? 'nb-pill-purple text-white border-2 border-[var(--nb-ink)] shadow-[2.5px_2.5px_0_var(--nb-ink)]'
+                      : 'bg-[var(--nb-surface-accent)] text-[var(--nb-secondary)] border-1.5 border-[var(--nb-divider)] hover:border-[var(--nb-ink)] hover:text-[var(--nb-content)]'
+                    }`}
+                >
+                  <Award className={`w-3.5 h-3.5 ${activeTab === 'certificates' ? 'text-white' : 'text-[var(--nb-accent)]'}`} />
+                  <span>Certificates</span>
+                  <span className={`w-2 h-2 rounded-full ${isCertificatesEnabled ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                </button>
+                <button
+                  onClick={() => setActiveTab('settings')}
+                  className={`py-1.5 px-3 text-xs font-mono font-bold uppercase tracking-wider rounded-md transition-all cursor-pointer flex items-center gap-1.5 shrink-0 whitespace-nowrap ${activeTab === 'settings'
+                      ? 'nb-pill-coral text-white border-2 border-[var(--nb-ink)] shadow-[2.5px_2.5px_0_var(--nb-ink)]'
+                      : 'bg-[var(--nb-surface-accent)] text-[var(--nb-secondary)] border-1.5 border-[var(--nb-divider)] hover:border-[var(--nb-ink)] hover:text-[var(--nb-content)]'
+                    }`}
+                >
+                  <Settings className="w-3.5 h-3.5" />
+                  Settings
+                </button>
+              </>
+            )}
 
-          {canViewAttendanceTab && (
-            <button
-              onClick={() => setActiveTab('attendance')}
-              className={`py-1.5 px-3 text-xs font-mono font-bold uppercase tracking-wider rounded-md transition-all cursor-pointer ${activeTab === 'attendance'
-                  ? 'nb-pill-green text-neutral-900 border-2 border-[var(--nb-ink)] shadow-[2.5px_2.5px_0_var(--nb-ink)]'
-                  : 'bg-[var(--nb-surface-accent)] text-[var(--nb-secondary)] border-1.5 border-[var(--nb-divider)] hover:border-[var(--nb-ink)] hover:text-[var(--nb-content)]'
-                }`}
-            >
-              Attendance &amp; Registry
-            </button>
-          )}
+            {canViewAttendanceTab && (
+              <button
+                onClick={() => setActiveTab('attendance')}
+                className={`py-1.5 px-3 text-xs font-mono font-bold uppercase tracking-wider rounded-md transition-all cursor-pointer shrink-0 whitespace-nowrap ${activeTab === 'attendance'
+                    ? 'nb-pill-green text-neutral-900 border-2 border-[var(--nb-ink)] shadow-[2.5px_2.5px_0_var(--nb-ink)]'
+                    : 'bg-[var(--nb-surface-accent)] text-[var(--nb-secondary)] border-1.5 border-[var(--nb-divider)] hover:border-[var(--nb-ink)] hover:text-[var(--nb-content)]'
+                  }`}
+              >
+                Attendance &amp; Registry
+              </button>
+            )}
+          </div>
+          {/* Subtle Right Scroll Fade Cue on Mobile */}
+          <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-6 bg-gradient-to-l from-[var(--nb-surface)] to-transparent sm:hidden" />
         </div>
 
         {/* Core Tabs Content */}
@@ -1258,7 +1269,7 @@ export default function AdminPanelView({
               style={{ border: '1.5px solid var(--nb-ink)', boxShadow: 'var(--shadow-hard-sm)' }}
             >
               <span>{feedbackMsg}</span>
-              <button onClick={() => setFeedbackMsg('')} className="font-bold text-sm cursor-pointer">&times;</button>
+              <button onClick={() => setFeedbackMsg('')} className="w-6 h-6 flex items-center justify-center rounded hover:bg-[var(--nb-surface)] font-bold text-base cursor-pointer" aria-label="Dismiss">&times;</button>
             </div>
           )}
           {feedbackErr && (
@@ -1267,7 +1278,7 @@ export default function AdminPanelView({
               style={{ border: '1.5px solid var(--nb-ink)', boxShadow: 'var(--shadow-hard-sm)' }}
             >
               <span>{feedbackErr}</span>
-              <button onClick={() => setFeedbackErr('')} className="font-bold text-sm cursor-pointer">&times;</button>
+              <button onClick={() => setFeedbackErr('')} className="w-6 h-6 flex items-center justify-center rounded hover:bg-rose-500/20 font-bold text-base cursor-pointer" aria-label="Dismiss">&times;</button>
             </div>
           )}
 
@@ -1431,77 +1442,75 @@ export default function AdminPanelView({
                     className="bg-[var(--nb-surface)] rounded-lg p-4 space-y-3.5"
                     style={{ border: '2px solid var(--nb-ink)', boxShadow: 'var(--shadow-hard-sm)' }}
                   >
-                    <div className="flex justify-between items-start">
-                      <div className="flex gap-3">
+                    <div className="flex flex-col sm:flex-row justify-between items-start gap-3">
+                      <div className="flex gap-3 min-w-0 flex-1">
                         <img
                           src={assoc.profile_pic || `https://api.dicebear.com/9.x/notionists/svg?seed=${assoc.rollNumber || assoc.uid}`}
                           alt={assoc.name}
-                          className="w-11 h-11 rounded object-cover bg-[var(--nb-surface-accent)]"
+                          className="w-11 h-11 rounded object-cover bg-[var(--nb-surface-accent)] shrink-0"
                           style={{ border: '1.5px solid var(--nb-ink)' }}
                         />
-                        <div>
-                          <h4 className="nb-headline text-sm text-[var(--nb-content)]">{assoc.name}</h4>
+                        <div className="min-w-0 flex-1">
+                          <h4 className="nb-headline text-sm text-[var(--nb-content)] truncate">{assoc.name}</h4>
                           <span className="nb-tag-accent text-[9px] font-mono uppercase mt-1 inline-block">
                             {assoc.position}
                           </span>
-                          <div className="flex items-center gap-3 text-xs text-[var(--nb-secondary)] mt-1 font-mono">
-                            <span className="flex items-center gap-1"><Mail className="w-3 h-3 text-[var(--nb-tertiary)]" /> {assoc.email}</span>
-                            {assoc.googleEmail && <span className="flex items-center gap-1 text-[var(--nb-accent)]"><Mail className="w-3 h-3" /> {assoc.googleEmail}</span>}
-                            {assoc.phone && <span className="flex items-center gap-1"><Phone className="w-3 h-3 text-[var(--nb-tertiary)]" /> {assoc.phone}</span>}
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--nb-secondary)] mt-1 font-mono">
+                            <span className="flex items-center gap-1 truncate max-w-full"><Mail className="w-3 h-3 text-[var(--nb-tertiary)] shrink-0" /> <span className="truncate">{assoc.email}</span></span>
+                            {assoc.googleEmail && <span className="flex items-center gap-1 text-[var(--nb-accent)] truncate max-w-full"><Mail className="w-3 h-3 shrink-0" /> <span className="truncate">{assoc.googleEmail}</span></span>}
+                            {assoc.phone && <span className="flex items-center gap-1 shrink-0"><Phone className="w-3 h-3 text-[var(--nb-tertiary)] shrink-0" /> {assoc.phone}</span>}
                           </div>
                         </div>
                       </div>
 
                       {/* CRUD Buttons */}
-                      <div className="flex flex-col gap-2 items-end">
-                        <div className="flex gap-2">
-                          {isTopAdmin && assoc.role === 'president' && (
-                            <button
-                              onClick={async () => {
-                                try {
-                                  await updateUserProfile(assoc.uid, { role: 'associate', position: 'Associate', responsibilities: '' });
-                                  refreshData();
-                                } catch (e) { console.error(e); }
-                              }}
-                              className="nb-btn-ghost text-[10px] font-bold uppercase px-2 py-1 cursor-pointer"
-                              style={{ border: '1px solid var(--nb-ink)' }}
-                            >
-                              Revoke Pres
-                            </button>
-                          )}
-
-                          {confirmDemoteId === assoc.uid ? (
-                            <button
-                              onClick={() => handleDemoteUser(assoc.uid)}
-                              className="text-[10px] bg-rose-500 text-white px-2 py-1 rounded font-bold uppercase cursor-pointer"
-                              style={{ border: '1px solid var(--nb-ink)' }}
-                            >
-                              Sure?
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => setConfirmDemoteId(assoc.uid)}
-                              className="nb-btn-ghost text-[10px] px-2 py-1 font-bold uppercase cursor-pointer"
-                              style={{ border: '1px solid var(--nb-ink)' }}
-                            >
-                              Revoke Role
-                            </button>
-                          )}
-                          <HoldButton
-                            size="sm"
-                            holdTime={1600}
-                            radius={4}
-                            backgroundColor="rgba(244, 63, 94, 0.1)"
-                            fillColor="#e11d48"
-                            textColor="#fda4af"
-                            fillTextColor="#ffffff"
-                            doneLabel="Deleted"
-                            onHold={() => handleDeleteUser(assoc.uid)}
-                            className="border border-rose-500/20 text-[10px] font-bold uppercase !h-6 !px-2"
+                      <div className="flex items-center gap-1.5 self-end sm:self-start shrink-0 flex-wrap">
+                        {isTopAdmin && assoc.role === 'president' && (
+                          <button
+                            onClick={async () => {
+                              try {
+                                await updateUserProfile(assoc.uid, { role: 'associate', position: 'Associate', responsibilities: '' });
+                                refreshData();
+                              } catch (e) { console.error(e); }
+                            }}
+                            className="nb-btn-ghost text-[10px] font-bold uppercase px-2 py-1 cursor-pointer"
+                            style={{ border: '1px solid var(--nb-ink)' }}
                           >
-                            Hold to Delete
-                          </HoldButton>
-                        </div>
+                            Revoke Pres
+                          </button>
+                        )}
+
+                        {confirmDemoteId === assoc.uid ? (
+                          <button
+                            onClick={() => handleDemoteUser(assoc.uid)}
+                            className="text-[10px] bg-rose-500 text-white px-2 py-1 rounded font-bold uppercase cursor-pointer"
+                            style={{ border: '1px solid var(--nb-ink)' }}
+                          >
+                            Sure?
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => setConfirmDemoteId(assoc.uid)}
+                            className="nb-btn-ghost text-[10px] px-2 py-1 font-bold uppercase cursor-pointer"
+                            style={{ border: '1px solid var(--nb-ink)' }}
+                          >
+                            Revoke Role
+                          </button>
+                        )}
+                        <HoldButton
+                          size="sm"
+                          holdTime={1600}
+                          radius={4}
+                          backgroundColor="rgba(244, 63, 94, 0.1)"
+                          fillColor="#e11d48"
+                          textColor="#fda4af"
+                          fillTextColor="#ffffff"
+                          doneLabel="Deleted"
+                          onHold={() => handleDeleteUser(assoc.uid)}
+                          className="border border-rose-500/20 text-[10px] font-bold uppercase !h-6 !px-2"
+                        >
+                          Hold to Delete
+                        </HoldButton>
                       </div>
                     </div>
 
@@ -1706,17 +1715,17 @@ export default function AdminPanelView({
                     className="bg-[var(--nb-surface)] rounded-lg p-4 space-y-3.5"
                     style={{ border: '2px solid var(--nb-ink)', boxShadow: 'var(--shadow-hard-sm)' }}
                   >
-                    <div className="flex justify-between items-start">
-                      <div className="flex gap-3">
+                    <div className="flex flex-col sm:flex-row justify-between items-start gap-3">
+                      <div className="flex gap-3 min-w-0 flex-1">
                         <div
                           className="w-10 h-10 rounded bg-[var(--nb-surface-accent)] flex items-center justify-center text-[var(--nb-accent)] shrink-0"
                           style={{ border: '1.5px solid var(--nb-ink)' }}
                         >
                           <Users className="w-5 h-5" />
                         </div>
-                        <div>
-                          <h4 className="nb-headline text-sm text-[var(--nb-content)]">{coord.name}</h4>
-                          <div className="flex gap-2 mt-0.5 items-center">
+                        <div className="min-w-0 flex-1">
+                          <h4 className="nb-headline text-sm text-[var(--nb-content)] truncate">{coord.name}</h4>
+                          <div className="flex flex-wrap gap-2 mt-0.5 items-center">
                             <span className="nb-tag text-[9px] font-mono font-bold">
                               Roll: {coord.rollNumber}
                             </span>
@@ -1724,18 +1733,18 @@ export default function AdminPanelView({
                           </div>
                         </div>
                       </div>
-                      <div className="flex flex-col gap-1 items-end">
-                        <button
-                          onClick={() => setActiveEditingCoordId(activeEditingCoordId === coord.uid ? null : coord.uid)}
-                          className="nb-btn text-xs py-1.5 px-3 font-bold cursor-pointer w-full text-center"
-                        >
-                          {activeEditingCoordId === coord.uid ? 'Close' : 'Manage Events'}
-                        </button>
-                        <div className="flex gap-1 w-full mt-1">
+                      <div className="flex flex-col sm:items-end gap-1.5 w-full sm:w-auto shrink-0">
+                        <div className="flex items-center gap-1.5 w-full sm:w-auto">
+                          <button
+                            onClick={() => setActiveEditingCoordId(activeEditingCoordId === coord.uid ? null : coord.uid)}
+                            className="nb-btn text-xs py-1.5 px-3 font-bold cursor-pointer flex-1 sm:flex-none text-center"
+                          >
+                            {activeEditingCoordId === coord.uid ? 'Close' : 'Manage Events'}
+                          </button>
                           {confirmDemoteId === coord.uid ? (
                             <button
                               onClick={() => handleDemoteUser(coord.uid)}
-                              className="flex-1 text-[9px] bg-rose-500 text-white px-2 py-1 rounded font-bold uppercase cursor-pointer"
+                              className="text-[9px] bg-rose-500 text-white px-2 py-1.5 rounded font-bold uppercase cursor-pointer"
                               style={{ border: '1px solid var(--nb-ink)' }}
                             >
                               Sure?
@@ -1743,7 +1752,7 @@ export default function AdminPanelView({
                           ) : (
                             <button
                               onClick={() => setConfirmDemoteId(coord.uid)}
-                              className="flex-1 nb-btn-ghost text-[9px] px-2 py-1 font-bold uppercase cursor-pointer"
+                              className="nb-btn-ghost text-[9px] px-2 py-1.5 font-bold uppercase cursor-pointer"
                               style={{ border: '1px solid var(--nb-ink)' }}
                             >
                               Revoke
@@ -1759,7 +1768,7 @@ export default function AdminPanelView({
                             fillTextColor="#ffffff"
                             doneLabel="Deleted"
                             onHold={() => handleDeleteUser(coord.uid)}
-                            className="flex-1 border border-rose-500/20 text-[9px] font-bold uppercase !h-6 !px-2"
+                            className="border border-rose-500/20 text-[9px] font-bold uppercase !h-7 !px-2 shrink-0"
                           >
                             Hold to Delete
                           </HoldButton>
@@ -1882,7 +1891,7 @@ export default function AdminPanelView({
                         style={{ boxShadow: 'var(--shadow-hard-sm)' }}
                       >
                         <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded bg-amber-400 text-black flex items-center justify-center shrink-0 border border-black font-bold">
+                          <div className="w-8 h-8 rounded bg-amber-400 text-black flex items-center justify-center shrink-0 border border-[var(--nb-ink)] font-bold">
                             <Lock className="w-4 h-4 stroke-[2.5]" />
                           </div>
                           <div>
@@ -1895,7 +1904,7 @@ export default function AdminPanelView({
                           </div>
                         </div>
                         <span
-                          className="nb-tag text-[9px] font-mono font-bold self-start sm:self-auto bg-amber-400 text-black border border-black uppercase"
+                          className="nb-tag text-[9px] font-mono font-bold self-start sm:self-auto bg-amber-400 text-black border border-[var(--nb-ink)] uppercase"
                         >
                           Opens on {activeEvent.date}
                         </span>
@@ -1906,7 +1915,7 @@ export default function AdminPanelView({
                         style={{ boxShadow: 'var(--shadow-hard-sm)' }}
                       >
                         <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded bg-emerald-400 text-black flex items-center justify-center shrink-0 border border-black font-bold">
+                          <div className="w-8 h-8 rounded bg-emerald-400 text-black flex items-center justify-center shrink-0 border border-[var(--nb-ink)] font-bold">
                             <CheckCircle className="w-4 h-4 stroke-[2.5]" />
                           </div>
                           <div>
@@ -2068,8 +2077,8 @@ export default function AdminPanelView({
                         )}
                       </div>
 
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-left border-collapse">
+                      <div className="overflow-x-auto scrollbar-none touch-pan-x">
+                        <table className="w-full min-w-[540px] text-left border-collapse">
                           <thead>
                             <tr className="bg-[var(--nb-surface-accent)] border-b-2 border-[var(--nb-ink)]">
                               <th className="py-2.5 px-2 nb-label text-[10px] text-[var(--nb-content)]">ROLL NO.</th>
@@ -2511,24 +2520,24 @@ export default function AdminPanelView({
                               </div>
 
                               {isExpanded && (
-                                <div className="pt-2 border-t border-[var(--nb-ink)]/15 flex justify-between gap-4">
-                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1.5 mt-1 text-[10px] text-[var(--nb-secondary)] flex-1">
+                                <div className="pt-2 border-t border-[var(--nb-ink)]/15 flex flex-col sm:flex-row justify-between gap-3">
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1.5 mt-1 text-[10px] text-[var(--nb-secondary)] flex-1 min-w-0">
                                     <span className="truncate">Email: <strong className="text-[var(--nb-content)] font-mono">{student.email}</strong></span>
                                     {student.googleEmail && (<span className="truncate">Google: <strong className="text-[var(--nb-content)] font-mono">{student.googleEmail}</strong></span>)}
                                     <span>Phone: <strong className="text-[var(--nb-content)]">{student.phone || 'N/A'}</strong></span>
-                                    <span>Password: <strong className="font-mono bg-[var(--nb-surface)] px-1 py-0.2 rounded border border-[var(--nb-ink)]/20">••••••••</strong></span>
+                                    <span>Password: <strong className="font-mono bg-[var(--nb-surface)] px-1 py-0.5 rounded border border-[var(--nb-ink)]/20">••••••••</strong></span>
                                     <span>Role: <strong className="uppercase text-[var(--nb-content)]">{student.role}</strong></span>
                                   </div>
 
-                                  <div className="flex flex-col gap-1.5 flex-shrink-0 w-24">
+                                  <div className="flex sm:flex-col gap-1.5 shrink-0 w-full sm:w-28 pt-1 sm:pt-0 border-t sm:border-t-0 border-[var(--nb-ink)]/10">
                                     <button
                                       onClick={(e) => { e.stopPropagation(); student.rollNumber && handleResetPassword(student.uid, student.rollNumber); }}
-                                      className="nb-btn-ghost text-[9px] font-bold uppercase py-1 px-2 rounded cursor-pointer w-full text-center"
+                                      className="nb-btn-ghost text-[9px] font-bold uppercase py-1.5 px-2 rounded cursor-pointer flex-1 sm:flex-none text-center"
                                       style={{ border: '1px solid var(--nb-ink)' }}
                                     >
                                       Reset Pass
                                     </button>
-                                    <div onClick={(e) => e.stopPropagation()}>
+                                    <div className="flex-1 sm:flex-none" onClick={(e) => e.stopPropagation()}>
                                       <HoldButton
                                         size="sm"
                                         holdTime={1600}
@@ -2539,13 +2548,12 @@ export default function AdminPanelView({
                                         fillTextColor="#ffffff"
                                         doneLabel="Deleted"
                                         onHold={() => handleDeleteUser(student.uid)}
-                                        className="border border-rose-500/20 text-[10px] font-bold uppercase !h-7 w-full !px-1"
+                                        className="border border-rose-500/20 text-[10px] font-bold uppercase !h-8 w-full !px-1"
                                         style={{ border: '1px solid var(--nb-ink)', fontSize: '10px' }}
                                       >
                                         Hold to Delete
                                       </HoldButton>
                                     </div>
-
                                   </div>
                                 </div>
                               )}
@@ -2787,10 +2795,10 @@ export default function AdminPanelView({
                     className="bg-[var(--nb-surface)] rounded-lg p-3 flex flex-col sm:flex-row items-center justify-between gap-3"
                     style={{ border: '1.5px solid var(--nb-ink)' }}
                   >
-                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0 scrollbar-none shrink-0">
                       <button
                         onClick={() => setBatchEventStatusFilter('all')}
-                        className={`px-3 py-1.5 rounded text-xs font-bold uppercase transition-all cursor-pointer ${batchEventStatusFilter === 'all'
+                        className={`px-3 py-1.5 rounded text-xs font-bold uppercase transition-all cursor-pointer shrink-0 whitespace-nowrap ${batchEventStatusFilter === 'all'
                             ? 'nb-btn'
                             : 'nb-btn-ghost'
                           }`}
@@ -2801,8 +2809,8 @@ export default function AdminPanelView({
 
                       <button
                         onClick={() => setBatchEventStatusFilter('pending')}
-                        className={`px-3 py-1.5 rounded text-xs font-bold uppercase transition-all cursor-pointer flex items-center gap-1 ${batchEventStatusFilter === 'pending'
-                            ? 'bg-amber-400 text-black'
+                        className={`px-3 py-1.5 rounded text-xs font-bold uppercase transition-all cursor-pointer flex items-center gap-1 shrink-0 whitespace-nowrap ${batchEventStatusFilter === 'pending'
+                            ? 'bg-amber-400 text-black border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)]'
                             : 'nb-btn-ghost'
                           }`}
                         style={{ border: '1.5px solid var(--nb-ink)' }}
@@ -2813,8 +2821,8 @@ export default function AdminPanelView({
 
                       <button
                         onClick={() => setBatchEventStatusFilter('completed')}
-                        className={`px-3 py-1.5 rounded text-xs font-bold uppercase transition-all cursor-pointer flex items-center gap-1 ${batchEventStatusFilter === 'completed'
-                            ? 'bg-emerald-400 text-black'
+                        className={`px-3 py-1.5 rounded text-xs font-bold uppercase transition-all cursor-pointer flex items-center gap-1 shrink-0 whitespace-nowrap ${batchEventStatusFilter === 'completed'
+                            ? 'bg-emerald-400 text-black border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)]'
                             : 'nb-btn-ghost'
                           }`}
                         style={{ border: '1.5px solid var(--nb-ink)' }}
@@ -3054,10 +3062,10 @@ export default function AdminPanelView({
 
                                 {/* Participants Table */}
                                 <div
-                                  className="bg-[var(--nb-surface)] rounded-lg overflow-hidden"
+                                  className="bg-[var(--nb-surface)] rounded-lg overflow-x-auto scrollbar-none touch-pan-x"
                                   style={{ border: '1.5px solid var(--nb-ink)' }}
                                 >
-                                  <table className="w-full text-left border-collapse text-xs">
+                                  <table className="w-full min-w-[560px] text-left border-collapse text-xs">
                                     <thead>
                                       <tr className="bg-[var(--nb-surface-accent)] border-b-2 border-[var(--nb-ink)] text-[10px] font-bold text-[var(--nb-content)] uppercase">
                                         <th className="py-2 px-3 w-8"></th>
@@ -3118,7 +3126,7 @@ export default function AdminPanelView({
                                                       {reg.studentName || student?.name || 'Student Participant'}
                                                     </div>
                                                     <div className="text-[9.5px] text-[var(--nb-secondary)] truncate">
-                                                      {student?.department || 'CSE (AI & ML)'} • {student?.year || reg.year || 'III Year'}
+                                                      {student?.department || activeTenant?.shortCode || activeTenant?.name || 'Department'} • {student?.year || reg.year || 'III Year'}
                                                     </div>
                                                   </div>
                                                 </div>
@@ -3628,7 +3636,7 @@ export default function AdminPanelView({
                         template={certificateTemplate}
                         studentName="AARAV S. VERMA"
                         rollNumber="22A91A0501"
-                        certificateId="CERT-AIML-0501-MLS-8F2B"
+                        certificateId={`CERT-${activeTenant?.shortCode || 'ORG'}-0501-MLS-8F2B`}
                         issueDate="15 Nov 2026"
                         event={{
                           title: events[0]?.title || "Machine Learning Symposium 2026",
@@ -4048,6 +4056,7 @@ export default function AdminPanelView({
         onClose={() => setIsVerifyModalOpen(false)}
         initialId={verifyInitialId}
         template={certificateTemplate}
+        activeTenant={activeTenant}
       />
 
       {/* Manual Issue Certificate Modal */}
@@ -4094,7 +4103,7 @@ export default function AdminPanelView({
                   <option value="">-- Choose Student --</option>
                   {allUsers.map(u => (
                     <option key={u.uid} value={u.uid}>
-                      {u.name} ({u.rollNumber || 'No Roll'}) - {u.department || 'AIML'}
+                      {u.name} ({u.rollNumber || 'No Roll'}) - {u.department || activeTenant?.shortCode || 'Member'}
                     </option>
                   ))}
                 </select>
@@ -4126,7 +4135,7 @@ export default function AdminPanelView({
               >
                 <span className="nb-label text-[9px] text-[var(--nb-secondary)] block">AUTO-GENERATED ID FORMAT</span>
                 <div className="font-mono text-xs font-bold text-emerald-600">
-                  CERT-AIML-[ROLL]-[EVT]-[HASH]
+                  CERT-{activeTenant?.shortCode || 'ORG'}-[ROLL]-[EVT]-[HASH]
                 </div>
                 <p className="text-[10px] text-[var(--nb-secondary)]">A unique tamper-evident verification ID will be generated upon issuance.</p>
               </div>
@@ -4217,6 +4226,7 @@ export default function AdminPanelView({
         events={events}
         registrations={registrations}
         initialTab={resetModalInitialTab}
+        activeTenant={activeTenant}
         onResetComplete={() => {
           refreshData();
           setFeedbackMsg("All prior association records have been wiped clean. Welcome to the fresh academic year!");
@@ -4232,6 +4242,7 @@ export default function AdminPanelView({
           tenantId={activeTenantIdResolved}
           onSaved={(updated) => {
             setBranding(updated);
+            refreshData();
             setFeedbackMsg(`Brand updated to "${updated.appName}" with live dynamic logo!`);
             setTimeout(() => setFeedbackMsg(''), 4000);
           }}

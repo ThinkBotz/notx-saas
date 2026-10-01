@@ -103,8 +103,7 @@ export default function EventTicketModal({
       <button 
         onClick={onClose} 
         aria-label="Close Ticket"
-        className="absolute top-4 right-4 w-9 h-9 bg-[var(--nb-surface)] text-[var(--nb-content)] rounded flex items-center justify-center cursor-pointer transition-transform active:translate-x-0.5 active:translate-y-0.5 z-20 hover:bg-[var(--nb-surface-accent)]"
-        style={{ border: '2px solid var(--nb-ink)', boxShadow: 'var(--shadow-hard-sm)' }}
+        className="absolute top-4 right-4 nb-btn-icon !w-9 !h-9 rounded z-20 cursor-pointer"
       >
         <X className="w-4 h-4 stroke-[2.5]" />
       </button>
@@ -125,16 +124,19 @@ export default function EventTicketModal({
           </div>
 
           {/* Header Strip */}
-          <div className="bg-[var(--nb-yellow)] text-black px-4 py-2 flex justify-between items-center border-b-2 border-[var(--nb-ink)]">
+          <div 
+            className="px-4 py-2 flex justify-between items-center border-b-2 border-[var(--nb-ink)]"
+            style={{ backgroundColor: 'var(--tenant-hero-bg)', color: 'var(--tenant-hero-fg)' }}
+          >
             <div className="flex items-center gap-1.5">
-              <Sparkles className="w-4 h-4 fill-black text-black" />
+              <Sparkles className="w-4 h-4" style={{ fill: 'var(--tenant-hero-fg)', color: 'var(--tenant-hero-fg)' }} />
               <span className="font-display font-black text-sm tracking-wider uppercase">
                 {branding?.appName || 'NOTX'} OFFICIAL PASS
               </span>
             </div>
             <span 
               className="text-[9px] font-mono font-black px-2 py-0.5 rounded-none bg-black text-[#FFE600]"
-              style={{ border: '1px solid black' }}
+              style={{ border: '1px solid var(--nb-ink)' }}
             >
               ADMIT ONE
             </span>
@@ -283,7 +285,7 @@ export default function EventTicketModal({
               {isCheckedIn && (
                 <div 
                   className="absolute inset-0 bg-emerald-400 flex flex-col items-center justify-center p-1 text-center select-none rotate-[-8deg]"
-                  style={{ border: '2px solid black' }}
+                  style={{ border: '2px solid var(--nb-ink)' }}
                 >
                   <CheckCircle2 className="w-7 h-7 text-black stroke-[3]" />
                   <span className="font-display font-black text-[11px] text-black tracking-wider leading-none mt-0.5">ADMITTED</span>

@@ -118,10 +118,10 @@ npm run build
 
 ## 👤 Contributor
 
-Developed and maintained by **[zmaxx07](https://github.com/zmaxx07)** for the **Department of CSE (AI & ML) Association**.
+Developed and maintained by **[samxiao0](https://github.com/samxiao0)** for the **Department of CSE (AI & ML) Association**.
 
 ---
 
-<div align="center">
+<div align ="center">
   <sub>Built with ❤️ for the CSE (AI & ML) Department Community</sub>
 </div>

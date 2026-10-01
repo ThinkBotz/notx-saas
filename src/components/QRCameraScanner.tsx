@@ -251,12 +251,12 @@ export default function QRCameraScanner({ onScan, onError }: QRCameraScannerProp
                 </div>
 
                 {/* Neo-Brutalist Laser Sweep Line (Flat solid bar, no gradients) */}
-                <div className="absolute left-0 right-0 h-1 bg-[var(--nb-yellow)] border-y border-black nb-laser-sweep" />
+                <div className="absolute left-0 right-0 h-1 bg-[var(--nb-yellow)] border-y border-[var(--nb-ink)] nb-laser-sweep" />
               </div>
 
               {/* Bottom Alignment Instruction */}
               <span 
-                className="absolute bottom-3 font-mono text-[9px] font-black text-black bg-[var(--nb-yellow)] px-3 py-1 rounded border-2 border-black uppercase tracking-wider shadow-[2px_2px_0_#000]"
+                className="absolute bottom-3 font-mono text-[9px] font-black text-black bg-[var(--nb-yellow)] px-3 py-1 rounded border-2 border-[var(--nb-ink)] uppercase tracking-wider shadow-[2px_2px_0_var(--nb-ink)]"
               >
                 ALIGN QR TICKET IN RETICLE
               </span>
@@ -267,7 +267,7 @@ export default function QRCameraScanner({ onScan, onError }: QRCameraScannerProp
         {/* Scan Success Confirmation Flash */}
         {isFlashActive && (
           <div className="absolute inset-0 bg-emerald-500/40 z-20 pointer-events-none transition-all duration-200 flex items-center justify-center">
-            <div className="bg-[var(--nb-green)] text-black font-mono font-black text-xs px-4 py-2 rounded border-2 border-black shadow-[3px_3px_0_#000] animate-bounce">
+            <div className="bg-[var(--nb-green)] text-black font-mono font-black text-xs px-4 py-2 rounded border-2 border-[var(--nb-ink)] shadow-[3px_3px_0_var(--nb-ink)] animate-bounce">
               ✓ CODE VERIFIED & ADMITTED
             </div>
           </div>
@@ -354,7 +354,7 @@ export default function QRCameraScanner({ onScan, onError }: QRCameraScannerProp
           style={{ border: '2px solid var(--nb-ink)', boxShadow: 'var(--shadow-hard-sm)' }}
         >
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-7 h-7 rounded-md bg-black text-[#00D26A] flex items-center justify-center shrink-0 border border-black shadow-[1.5px_1.5px_0_#000]">
+            <div className="w-7 h-7 rounded-md bg-black text-[#00D26A] flex items-center justify-center shrink-0 border border-[var(--nb-ink)] shadow-[1.5px_1.5px_0_var(--nb-ink)]">
               <CheckCircle2 className="w-4 h-4 stroke-[2.5]" />
             </div>
             <div className="min-w-0">
@@ -366,7 +366,7 @@ export default function QRCameraScanner({ onScan, onError }: QRCameraScannerProp
               </span>
             </div>
           </div>
-          <span className="text-[9.5px] font-mono font-bold px-2 py-0.5 rounded bg-black text-white shrink-0 border border-black">
+          <span className="text-[9.5px] font-mono font-bold px-2 py-0.5 rounded bg-black text-white shrink-0 border border-[var(--nb-ink)]">
             VERIFIED
           </span>
         </div>

@@ -139,7 +139,7 @@ export const CertificateCard: React.FC<CertificateCardProps> = ({
           {template.orgName || "NOTX ASSOCIATION"}
         </span>
         <span className="nb-label text-[9px] sm:text-[10px] text-[var(--nb-secondary)] tracking-wide mt-0.5 max-w-sm mx-auto">
-          {template.departmentName || "CSE (Artificial Intelligence & Machine Learning)"}
+          {template.departmentName || "Academic Department"}
         </span>
         {template.institutionName && (
           <span className="nb-label text-[8px] text-[var(--nb-secondary)] mt-0.5">
@@ -216,7 +216,7 @@ export const CertificateCard: React.FC<CertificateCardProps> = ({
               {template.signatory1Name || "Head of Department"}
             </div>
             <div className="nb-label text-[8px] text-[var(--nb-secondary)]">
-              {template.signatory1Title || "HOD, CSE (AI & ML)"}
+              {template.signatory1Title || "Head of Department"}
             </div>
             {template.signatory1Dept && (
               <div className="nb-label text-[7.5px] text-[var(--nb-secondary)]">

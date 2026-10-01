@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Trophy, Medal, Search, Sparkles, User, Calendar, Edit3, Plus, CheckCircle2 } from 'lucide-react';
-import { UserProfile, DepartmentEvent, EventWinner } from '../types';
+import { UserProfile, DepartmentEvent, EventWinner, Tenant } from '../types';
 import { addEventWinner, updateEventWinner } from '../firebase';
 
 interface AddEventWinnerModalProps {
@@ -12,6 +12,7 @@ interface AddEventWinnerModalProps {
   initialWinner?: EventWinner | null;
   onWinnerSaved?: (winnerId: string) => void;
   onWinnerAdded?: (winnerId: string) => void;
+  activeTenant?: Tenant | null;
 }
 
 export default function AddEventWinnerModal({
@@ -22,7 +23,8 @@ export default function AddEventWinnerModal({
   currentUser,
   initialWinner = null,
   onWinnerSaved,
-  onWinnerAdded
+  onWinnerAdded,
+  activeTenant
 }: AddEventWinnerModalProps) {
   const isEditing = Boolean(initialWinner);
 
@@ -76,7 +78,7 @@ export default function AddEventWinnerModal({
           email: '',
           role: 'student',
           rollNumber: initialWinner.rollNumber,
-          department: initialWinner.department || 'CSE (AI & ML)',
+          department: initialWinner.department || activeTenant?.shortCode || activeTenant?.name || 'Department',
           year: initialWinner.year || 'III Year',
           section: initialWinner.section || 'A',
           profile_pic: initialWinner.studentPhoto,
@@ -157,7 +159,7 @@ export default function AddEventWinnerModal({
         studentId: selectedStudent.uid,
         studentName: selectedStudent.name,
         rollNumber: selectedStudent.rollNumber || 'N/A',
-        department: selectedStudent.department || 'CSE (AI & ML)',
+        department: selectedStudent.department || activeTenant?.shortCode || activeTenant?.name || 'Department',
         year: selectedStudent.year || 'III Year',
         section: selectedStudent.section || 'A',
         studentPhoto: selectedStudent.profile_pic || `https://api.dicebear.com/9.x/notionists/svg?seed=${selectedStudent.rollNumber || selectedStudent.uid}`,
@@ -216,8 +218,7 @@ export default function AddEventWinnerModal({
 
           <button
             onClick={onClose}
-            className="nb-btn-ghost w-7 h-7 rounded flex items-center justify-center cursor-pointer"
-            style={{ border: '1.5px solid var(--nb-ink)' }}
+            className="nb-btn-icon !w-8 !h-8 rounded cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
@@ -309,7 +310,7 @@ export default function AddEventWinnerModal({
                       <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
                     </div>
                     <div className="text-[10px] text-[var(--nb-secondary)] font-mono truncate">
-                      {selectedStudent.rollNumber || 'N/A'} • {selectedStudent.department || 'CSE (AI & ML)'} • {selectedStudent.year || 'III Year'}
+                      {selectedStudent.rollNumber || 'N/A'} • {selectedStudent.department || activeTenant?.shortCode || activeTenant?.name || 'Department'} • {selectedStudent.year || 'III Year'}
                     </div>
                   </div>
                 </div>
@@ -320,8 +321,7 @@ export default function AddEventWinnerModal({
                     setSelectedStudent(null);
                     setStudentSearch('');
                   }}
-                  className="nb-btn-ghost p-1 cursor-pointer rounded"
-                  style={{ border: '1px solid var(--nb-ink)' }}
+                  className="nb-btn-icon !w-7 !h-7 rounded cursor-pointer"
                   title="Change student"
                 >
                   <X className="w-3.5 h-3.5" />
@@ -480,7 +480,6 @@ export default function AddEventWinnerModal({
               type="button"
               onClick={onClose}
               className="nb-btn-ghost px-4 py-2 rounded text-xs font-bold uppercase cursor-pointer"
-              style={{ border: '1.5px solid var(--nb-ink)' }}
             >
               Cancel
             </button>
@@ -489,7 +488,6 @@ export default function AddEventWinnerModal({
               type="submit"
               disabled={isSubmitting || !selectedStudent}
               className="nb-btn px-5 py-2 rounded text-xs font-bold uppercase tracking-wider cursor-pointer flex items-center gap-1.5 disabled:opacity-40"
-              style={{ border: '2px solid var(--nb-ink)', boxShadow: 'var(--shadow-hard-sm)' }}
             >
               {isEditing ? (
                 <>

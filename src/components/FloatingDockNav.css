@@ -99,8 +99,8 @@
 
 /* ── Unified Active State: Entire Item Becomes a Bold Signature Pill ── */
 .floating-dock-item.is-active {
-  background: var(--nb-yellow) !important;
-  color: #111111 !important;
+  background: var(--tenant-hero-bg, var(--nb-accent)) !important;
+  color: var(--tenant-hero-fg, #111111) !important;
   border: 1.5px solid var(--nb-ink) !important;
   box-shadow: 2px 2px 0 var(--nb-ink);
   transform: translateY(-1px);
@@ -129,7 +129,7 @@
 }
 
 .floating-dock-item.is-active .floating-dock-icon {
-  color: #111111 !important;
+  color: var(--tenant-hero-fg, #111111) !important;
   stroke-width: 2.3px;
 }
 
@@ -152,7 +152,7 @@
 }
 
 .floating-dock-item.is-active .floating-dock-label {
-  color: #111111 !important;
+  color: var(--tenant-hero-fg, #111111) !important;
   font-weight: 800;
 }
 

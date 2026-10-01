@@ -574,14 +574,14 @@ export default function GalleryView({ user, albums, refreshData, activeTenantId 
 
                 {/* Photo Count Pill */}
                 <div 
-                  className="absolute bottom-2.5 right-2.5 bg-[var(--nb-ink)] text-[var(--nb-bg)] px-2 py-0.5 rounded text-[10px] font-mono font-bold flex items-center gap-1 shadow-[1.5px_1.5px_0_#000]"
+                  className="absolute bottom-2.5 right-2.5 bg-[var(--nb-ink)] text-[var(--nb-bg)] px-2 py-0.5 rounded text-[10px] font-mono font-bold flex items-center gap-1 shadow-[1.5px_1.5px_0_var(--nb-ink)]"
                 >
                   <ImageIcon className="w-3 h-3 text-[var(--nb-yellow)]" />
                   <span>{album.images.length} Photos</span>
                 </div>
 
                 <div className="absolute bottom-2.5 left-2.5">
-                  <span className={`text-[9.5px] font-mono font-bold px-2 py-0.5 rounded border border-black shadow-[1.5px_1.5px_0_#000] uppercase ${
+                  <span className={`text-[9.5px] font-mono font-bold px-2 py-0.5 rounded border border-[var(--nb-ink)] shadow-[1.5px_1.5px_0_var(--nb-ink)] uppercase ${
                     album.category === 'Workshops' ? 'nb-pill-blue' :
                     album.category === 'Hackathons' ? 'nb-pill-purple' :
                     album.category === 'Seminars' ? 'nb-pill-green' :

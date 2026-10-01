@@ -5,7 +5,7 @@ import {
   AlertCircle, ChevronRight, CornerDownRight, User, Trash2
 } from 'lucide-react';
 import { ref, onValue } from 'firebase/database';
-import { UserProfile, UserInvitation } from '../types';
+import { UserProfile, UserInvitation, Tenant } from '../types';
 import HoldButton from './HoldButton';
 import { 
   getChatRoomId,
@@ -23,6 +23,7 @@ interface MessagesViewProps {
   initialTargetRoll?: string | null;
   onTargetHandled?: () => void;
   activeTenantId?: string;
+  activeTenant?: Tenant | null;
 }
 
 interface Conversation {
@@ -34,7 +35,7 @@ interface Conversation {
   typing?: string[];
 }
 
-export default function MessagesView({ user, allUsers, initialTargetRoll, onTargetHandled, activeTenantId }: MessagesViewProps) {
+export default function MessagesView({ user, allUsers, initialTargetRoll, onTargetHandled, activeTenantId, activeTenant }: MessagesViewProps) {
   const tenant = activeTenantId || user.tenantId;
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedRoll, setSelectedRoll] = useState<string | null>(null);
@@ -488,16 +489,16 @@ export default function MessagesView({ user, allUsers, initialTargetRoll, onTarg
               className="p-3 bg-[var(--nb-surface)] flex items-center justify-between flex-shrink-0"
               style={{ borderBottom: '2px solid var(--nb-ink)' }}
             >
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-2.5 min-w-0 flex-1">
                 <button
                   onClick={() => setSelectedRoll(null)}
-                  className="nb-btn-icon w-8 h-8 rounded cursor-pointer md:hidden"
+                  className="nb-btn-icon w-8 h-8 rounded cursor-pointer md:hidden flex-shrink-0"
                   title="Back to list"
                 >
                   <ChevronRight className="w-4 h-4 rotate-180" />
                 </button>
                 <div 
-                  className="w-9 h-9 rounded-md bg-[var(--nb-surface-accent)] flex items-center justify-center text-xs font-mono font-bold overflow-hidden"
+                  className="w-9 h-9 rounded-md bg-[var(--nb-surface-accent)] flex items-center justify-center text-xs font-mono font-bold overflow-hidden flex-shrink-0"
                   style={{ border: '1.5px solid var(--nb-ink)' }}
                 >
                   <img 
@@ -506,16 +507,16 @@ export default function MessagesView({ user, allUsers, initialTargetRoll, onTarg
                     className="w-full h-full object-cover" 
                   />
                 </div>
-                <div>
-                  <h3 className="nb-headline text-sm tracking-normal leading-tight">
+                <div className="min-w-0 flex-1">
+                  <h3 className="nb-headline text-sm tracking-normal leading-tight truncate">
                     {activeConversation.classmateName}
                   </h3>
-                  <div className="flex items-center gap-1.5 mt-0.5">
-                    <span className="nb-tag text-[9px]">
+                  <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                    <span className="nb-tag text-[9px] flex-shrink-0">
                       {activeConversation.classmateRoll}
                     </span>
                     {activeConversation.classmateProfile && (
-                      <span className="nb-label text-[9px] text-[var(--nb-secondary)]">
+                      <span className="nb-label text-[9px] text-[var(--nb-secondary)] truncate">
                         ({activeConversation.classmateProfile.year} • Sec {activeConversation.classmateProfile.section})
                       </span>
                     )}
@@ -893,7 +894,7 @@ export default function MessagesView({ user, allUsers, initialTargetRoll, onTarg
                             {student.rollNumber || 'N/A'}
                           </span>
                           <span className="nb-label text-[9px] text-[var(--nb-secondary)]">
-                            • {student.year || '3rd Year'} ({student.department || 'CSE'})
+                            • {student.year || '3rd Year'} ({student.department || activeTenant?.shortCode || activeTenant?.name || 'Student'})
                           </span>
                         </div>
                       </div>

@@ -338,7 +338,7 @@ export const CertificateTemplateModal: React.FC<CertificateTemplateModalProps> =
                       type="text"
                       value={template.departmentName}
                       onChange={(e) => setTemplate(t => ({ ...t, departmentName: e.target.value }))}
-                      placeholder="e.g. CSE (Artificial Intelligence & Machine Learning)"
+                      placeholder="e.g. Department of Computer Science & Engineering"
                       className="w-full bg-[var(--nb-surface-accent)] rounded px-3 py-2 text-xs font-bold text-[var(--nb-content)] outline-none"
                       style={{ border: '1.5px solid var(--nb-ink)' }}
                       required
@@ -477,7 +477,7 @@ export const CertificateTemplateModal: React.FC<CertificateTemplateModalProps> =
                         type="text"
                         value={template.signatory1Dept}
                         onChange={(e) => setTemplate(t => ({ ...t, signatory1Dept: e.target.value }))}
-                        placeholder="Dept / Unit (e.g. CSE AI & ML)"
+                        placeholder="Dept / Unit (e.g. Academic Council)"
                         className="w-full bg-[var(--nb-surface)] rounded px-2.5 py-1.5 text-xs font-bold text-[var(--nb-content)] outline-none"
                         style={{ border: '1px solid var(--nb-ink)' }}
                       />
