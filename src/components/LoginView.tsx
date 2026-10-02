@@ -406,7 +406,7 @@ export default function LoginView({
 
   const tenantMembersCount = effectiveTenantUsers.filter(
     u => !u.isSuperAdmin && u.uid !== 'admin_master' &&
-         (!cleanSelectedTid || (u.tenantId && u.tenantId.trim().toLowerCase() === cleanSelectedTid))
+      (!cleanSelectedTid || (u.tenantId && u.tenantId.trim().toLowerCase() === cleanSelectedTid))
   ).length;
 
   const tenantEvents = events.filter(
@@ -875,15 +875,7 @@ export default function LoginView({
 
             {/* Left: Department Titles & Highlights */}
             <div className="flex-1 space-y-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="nb-pill-purple text-[10px] font-mono font-bold text-white shadow-[2px_2px_0_var(--nb-ink)] inline-flex items-center gap-1 px-2.5 py-1">
-                  🏛 {selectedTenant?.shortCode || 'DEPARTMENT'} ASSOCIATION
-                </span>
-                <span className="nb-pill-green text-[10px] font-mono font-bold text-black shadow-[2px_2px_0_var(--nb-ink)] inline-flex items-center gap-1 px-2.5 py-1">
-                  <span className="w-2 h-2 rounded-full bg-emerald-700 animate-pulse" />
-                  VERIFIED PORTAL
-                </span>
-              </div>
+
 
               <h1
                 className="nb-headline leading-tight tracking-tight drop-shadow-sm text-4xl lg:text-5xl"
@@ -948,9 +940,7 @@ export default function LoginView({
                 <h2 className="nb-headline text-2xl text-[var(--nb-content)]">
                   DEPARTMENT EVENTS SHOWCASE
                 </h2>
-                <span className="nb-pill-cyan text-[10px] font-mono font-bold shadow-[1.5px_1.5px_0_var(--nb-ink)]">
-                  READ-ONLY PREVIEW
-                </span>
+
               </div>
               <p className="font-mono text-xs font-semibold text-[var(--nb-secondary)] mt-0.5">
                 Explore active hackathons, workshops, and symposiums for {selectedTenant?.shortCode || 'this department'}
@@ -1037,9 +1027,7 @@ export default function LoginView({
                   <h2 className="nb-headline text-2xl text-[var(--nb-content)]">
                     WALL OF FAME & MERIT HONOREES
                   </h2>
-                  <span className="nb-pill-yellow text-[10px] font-mono font-bold text-black shadow-[1.5px_1.5px_0_var(--nb-ink)]">
-                    TOP ACHIEVERS
-                  </span>
+
                 </div>
                 <p className="font-mono text-xs font-semibold text-[var(--nb-secondary)] mt-0.5">
                   Celebrating students who excelled in hackathons, academic competitions, and departmental tech-fests

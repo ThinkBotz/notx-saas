@@ -92,13 +92,15 @@ import {
   addTicketReply,
   updateTicketStatus,
   markTicketRead,
-  deleteSupportTicket
+  deleteSupportTicket,
+  DEFAULT_TENANT_ID
 } from '../firebase';
 
 import { runSecurityAndTenantValidation, TestResult } from '../utils/testTenantSecurity';
 import BrandLogo from './BrandLogo';
 import { THEME_PRESETS, ThemePresetKey, TenantThemeConfig, resolveTenantTheme } from '../utils/themePresets';
 import ManagePlatformDevelopersModal from './ManagePlatformDevelopersModal';
+import DeleteTenantModal from './DeleteTenantModal';
 
 interface SuperAdminDashboardProps {
   currentUser: UserProfile;
@@ -204,6 +206,9 @@ export default function SuperAdminDashboard({
   // Global notification banner
   const [globalFeedback, setGlobalFeedback] = useState('');
 
+  // Delete Tenant Stepped Modal state
+  const [deletingTenant, setDeletingTenant] = useState<Tenant | null>(null);
+
   // Platform Dev Config state (Managed Exclusively by Super Admin)
   const [platformDevConfig, setPlatformDevConfig] = useState<PlatformDevConfig>(() => {
     const cached = localStorage.getItem('notx_platform_devs');
@@ -270,7 +275,7 @@ export default function SuperAdminDashboard({
 
   // 5. Body Scroll Locking when any modal is open (Prevents double scroll)
   useEffect(() => {
-    const hasModal = isAddModalOpen || !!editingTenant || isValidationModalOpen || isManageDevsModalOpen || !!inspectingBackup;
+    const hasModal = isAddModalOpen || !!editingTenant || !!deletingTenant || isValidationModalOpen || isManageDevsModalOpen || !!inspectingBackup;
     if (hasModal) {
       document.body.style.overflow = 'hidden';
     } else {
@@ -279,7 +284,7 @@ export default function SuperAdminDashboard({
     return () => {
       document.body.style.overflow = '';
     };
-  }, [isAddModalOpen, editingTenant, isValidationModalOpen, isManageDevsModalOpen, inspectingBackup]);
+  }, [isAddModalOpen, editingTenant, deletingTenant, isValidationModalOpen, isManageDevsModalOpen, inspectingBackup]);
 
 
   // 4. Parallelized Batch Telemetry Loading (High Performance)
@@ -455,7 +460,12 @@ export default function SuperAdminDashboard({
   };
 
   const handleRestoreBackup = async (backup: DeletedBackup) => {
-    if (!window.confirm(`Are you sure you want to restore "${backup.entityName}" back to the active database? This will revive all child records if it was a cascading event.`)) {
+    const isTenant = backup.entityType === 'tenant' || backup.entityType === 'tenant_cascade';
+    const confirmMessage = isTenant
+      ? `Are you sure you want to REVIVE organization "${backup.entityName}" (${backup.entityId})? This will immediately restore the tenant portal and re-activate all cascaded users, events, and student records back to the fleet.`
+      : `Are you sure you want to restore "${backup.entityName}" back to the active database? This will revive all child records if it was a cascading event.`;
+
+    if (!window.confirm(confirmMessage)) {
       return;
     }
     setIsRestoringBackupId(backup.backupId);
@@ -467,7 +477,10 @@ export default function SuperAdminDashboard({
         role: currentUser.role,
         isSuperAdmin: true
       });
-      setGlobalFeedback(`Successfully restored "${backup.entityName}" to active database.`);
+      const successMsg = isTenant
+        ? `Successfully revived organization "${backup.entityName}"! Restored to active fleet.`
+        : `Successfully restored "${backup.entityName}" to active database.`;
+      setGlobalFeedback(successMsg);
       setTimeout(() => setGlobalFeedback(''), 5000);
       if (inspectingBackup?.backupId === backup.backupId) {
         setInspectingBackup(null);
@@ -910,7 +923,7 @@ export default function SuperAdminDashboard({
 
   return (
     <div 
-      className={`fixed inset-0 h-full w-full ${isAddModalOpen || !!editingTenant || isValidationModalOpen || isManageDevsModalOpen ? 'overflow-hidden' : 'overflow-y-auto'} bg-[var(--nb-bg)] text-[var(--nb-content)] flex flex-col font-sans selection:bg-amber-400 selection:text-neutral-900`}
+      className={`fixed inset-0 h-full w-full ${isAddModalOpen || !!editingTenant || !!deletingTenant || isValidationModalOpen || isManageDevsModalOpen ? 'overflow-hidden' : 'overflow-y-auto'} bg-[var(--nb-bg)] text-[var(--nb-content)] flex flex-col font-sans selection:bg-amber-400 selection:text-neutral-900`}
     >
       
       {/* ── 1. MASTER COMMAND HEADER ── */}
@@ -1538,6 +1551,22 @@ export default function SuperAdminDashboard({
                             <Edit3 className="w-3.5 h-3.5" />
                             <span>Edit</span>
                           </button>
+                          {tenant.tenantId !== DEFAULT_TENANT_ID ? (
+                            <button
+                              onClick={() => setDeletingTenant(tenant)}
+                              className="nb-btn-ghost py-2 px-2.5 text-xs font-bold uppercase flex items-center justify-center cursor-pointer text-rose-600 hover:bg-rose-500/10 border-rose-500/30"
+                              title="Delete Organization"
+                            >
+                              <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                            </button>
+                          ) : (
+                            <div
+                              className="py-2 px-2.5 text-xs flex items-center justify-center opacity-30 cursor-not-allowed"
+                              title="Default root tenant cannot be deleted"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </div>
+                          )}
                         </div>
 
                         <button
@@ -1645,6 +1674,15 @@ export default function SuperAdminDashboard({
                                 >
                                   <Copy className="w-3 h-3" />
                                 </button>
+                                {tenant.tenantId !== DEFAULT_TENANT_ID && (
+                                  <button
+                                    onClick={() => setDeletingTenant(tenant)}
+                                    className="nb-btn-ghost py-1 px-2 text-[11px] font-bold uppercase cursor-pointer text-rose-600 hover:bg-rose-500/10"
+                                    title="Delete Organization"
+                                  >
+                                    <Trash2 className="w-3 h-3 text-rose-500" />
+                                  </button>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -2347,6 +2385,7 @@ export default function SuperAdminDashboard({
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {filteredDeletedBackups.map((backup) => {
                   const isRestored = !!backup.restoredAt;
+                  const isTenant = backup.entityType === 'tenant' || backup.entityType === 'tenant_cascade';
                   const isCascade = backup.entityType === 'event_cascade';
                   const isReset = backup.entityType === 'association_reset';
                   const cascadeChildCount = backup.cascadeChildren 
@@ -2364,13 +2403,15 @@ export default function SuperAdminDashboard({
                         {/* Header Pills */}
                         <div className="flex items-center justify-between gap-2">
                           <span className={`text-[9.5px] font-mono font-black uppercase px-2 py-0.5 rounded border border-[var(--nb-ink)] shadow-[1px_1px_0_var(--nb-ink)] ${
-                            isCascade 
+                            isTenant
+                              ? 'bg-rose-500 text-white'
+                              : isCascade 
                               ? 'bg-violet-400 text-neutral-900' 
                               : isReset 
                               ? 'bg-rose-400 text-neutral-900'
                               : 'bg-amber-300 text-neutral-900'
                           }`}>
-                            {backup.entityType}
+                            {isTenant ? 'Tenant Organization' : backup.entityType}
                           </span>
 
                           <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-[var(--nb-surface-accent)] border border-[var(--nb-ink)]">
@@ -2384,11 +2425,51 @@ export default function SuperAdminDashboard({
                             {backup.entityName}
                           </h4>
                           <div className="flex items-center gap-2 mt-0.5 text-[10px] font-mono text-[var(--nb-secondary)]">
-                            <span>Collection: <strong>{backup.originalCollection}</strong></span>
+                            <span>Collection: <strong>{backup.originalCollection || (isTenant ? 'tenants' : 'records')}</strong></span>
                             <span>•</span>
                             <span>ID: {backup.entityId.slice(0, 10)}...</span>
                           </div>
                         </div>
+
+                        {/* Tenant Cascade Information */}
+                        {isTenant && (
+                          <div className="p-2.5 rounded-lg bg-rose-500/10 border-2 border-rose-500/30 text-[11px] font-mono space-y-1.5">
+                            <div className="flex items-center justify-between text-rose-700 dark:text-rose-400 font-bold">
+                              <div className="flex items-center gap-1.5">
+                                <Building2 className="w-3.5 h-3.5" />
+                                <span>De-provisioned Organization</span>
+                              </div>
+                              <span className="px-1.5 py-0.2 rounded bg-rose-500 text-white text-[9px] font-black uppercase">
+                                {cascadeChildCount} Cascade Items
+                              </span>
+                            </div>
+                            {backup.metadata?.reason && (
+                              <div className="text-[10px] text-[var(--nb-secondary)] line-clamp-2">
+                                Reason: <span className="font-semibold text-[var(--nb-content)]">{backup.metadata.reason}</span>
+                              </div>
+                            )}
+                            <div className="grid grid-cols-3 gap-1 pt-1 text-center font-bold">
+                              <div className="p-1 rounded bg-[var(--nb-surface)] border border-[var(--nb-ink)]/20">
+                                <div className="text-xs text-blue-600 dark:text-blue-400">
+                                  {backup.cascadeChildren?.users?.length || backup.metadata?.stats?.users || 0}
+                                </div>
+                                <div className="text-[8px] uppercase text-[var(--nb-secondary)]">Users</div>
+                              </div>
+                              <div className="p-1 rounded bg-[var(--nb-surface)] border border-[var(--nb-ink)]/20">
+                                <div className="text-xs text-violet-600 dark:text-violet-400">
+                                  {backup.cascadeChildren?.events?.length || backup.metadata?.stats?.events || 0}
+                                </div>
+                                <div className="text-[8px] uppercase text-[var(--nb-secondary)]">Events</div>
+                              </div>
+                              <div className="p-1 rounded bg-[var(--nb-surface)] border border-[var(--nb-ink)]/20">
+                                <div className="text-xs text-emerald-600 dark:text-emerald-400">
+                                  {backup.cascadeChildren?.registrations?.length || backup.metadata?.stats?.registrations || 0}
+                                </div>
+                                <div className="text-[8px] uppercase text-[var(--nb-secondary)]">Passes</div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
 
                         {/* Cascade Information */}
                         {isCascade && backup.cascadeChildren && (
@@ -2442,7 +2523,7 @@ export default function SuperAdminDashboard({
                           {isRestored && (
                             <div className="mt-2 p-1.5 rounded bg-emerald-500/15 border border-emerald-500/30 text-[10px] text-emerald-700 dark:text-emerald-300 font-bold flex items-center gap-1.5">
                               <CheckCircle2 className="w-3.5 h-3.5" />
-                              <span>Restored to active DB on {new Date(backup.restoredAt!).toLocaleDateString()}</span>
+                              <span>{isTenant ? 'Revived & restored to active fleet on ' : 'Restored to active DB on '}{new Date(backup.restoredAt!).toLocaleDateString()}</span>
                             </div>
                           )}
                         </div>
@@ -2464,11 +2545,19 @@ export default function SuperAdminDashboard({
                           type="button"
                           onClick={() => handleRestoreBackup(backup)}
                           disabled={isRestoringBackupId === backup.backupId}
-                          className="flex-1 nb-btn py-1.5 px-2 text-xs font-black uppercase flex items-center justify-center gap-1 cursor-pointer bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50"
-                          title="Restore record and its cascade back to active database"
+                          className={`flex-1 nb-btn py-1.5 px-2 text-xs font-black uppercase flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50 ${
+                            isTenant 
+                              ? 'bg-amber-400 hover:bg-amber-500 text-neutral-900 border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)]'
+                              : 'bg-emerald-500 text-white hover:bg-emerald-600'
+                          }`}
+                          title={isTenant ? "Revive organization and all cascaded users, events & records" : "Restore record and its cascade back to active database"}
                         >
                           <RotateCcw className={`w-3.5 h-3.5 ${isRestoringBackupId === backup.backupId ? 'animate-spin' : ''}`} />
-                          <span>{isRestoringBackupId === backup.backupId ? 'Restoring...' : 'Restore'}</span>
+                          <span>
+                            {isRestoringBackupId === backup.backupId 
+                              ? (isTenant ? 'Reviving...' : 'Restoring...') 
+                              : (isTenant ? 'Revive Tenant' : 'Restore')}
+                          </span>
                         </button>
 
                         <button
@@ -3088,9 +3177,26 @@ export default function SuperAdminDashboard({
 
             {/* Tier 3: Sticky Footer (Always Visible on Screen) */}
             <div className="p-4 bg-[var(--nb-surface-accent)] border-t-2 border-[var(--nb-ink)] flex items-center justify-between gap-3 shrink-0">
-              <span className="text-[10px] font-mono text-[var(--nb-secondary)] hidden sm:inline">
-                {modalTab === 'credentials' ? 'Step 1 of 2: Identity' : 'Step 2 of 2: Brand Identity'}
-              </span>
+              <div className="flex items-center gap-3">
+                <span className="text-[10px] font-mono text-[var(--nb-secondary)] hidden sm:inline">
+                  {modalTab === 'credentials' ? 'Step 1 of 2: Identity' : 'Step 2 of 2: Brand Identity'}
+                </span>
+                {editingTenant && editingTenant.tenantId !== DEFAULT_TENANT_ID && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const target = editingTenant;
+                      setEditingTenant(null);
+                      setDeletingTenant(target);
+                    }}
+                    className="nb-btn-ghost py-1.5 px-2.5 text-[11px] font-mono font-bold uppercase flex items-center gap-1 cursor-pointer text-rose-600 hover:bg-rose-500/10 border-rose-500/30"
+                    title="De-provision Organization"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                    <span className="hidden sm:inline">Delete</span>
+                  </button>
+                )}
+              </div>
               <div className="flex items-center gap-2.5 w-full sm:w-auto">
                 <button
                   type="button"
@@ -3588,13 +3694,33 @@ export default function SuperAdminDashboard({
                   className="nb-btn py-2 px-4 text-xs font-black uppercase flex items-center gap-1.5 cursor-pointer bg-emerald-500 text-white hover:bg-emerald-600"
                 >
                   <RotateCcw className={`w-3.5 h-3.5 ${isRestoringBackupId === inspectingBackup.backupId ? 'animate-spin' : ''}`} />
-                  <span>Restore Record to Active DB</span>
+                  <span>
+                    {inspectingBackup.entityType === 'tenant' || inspectingBackup.entityType === 'tenant_cascade'
+                      ? 'Revive Organization to Active Fleet'
+                      : 'Restore Record to Active DB'}
+                  </span>
                 </button>
               </div>
             </div>
           </div>
         </div>
       )}
+
+      {/* Stepped Delete Tenant Modal */}
+      <DeleteTenantModal
+        isOpen={!!deletingTenant}
+        tenant={deletingTenant}
+        onClose={() => setDeletingTenant(null)}
+        onSuccess={(deletedTenantId) => {
+          setTenants(prev => prev.filter(t => t.tenantId !== deletedTenantId));
+          setGlobalFeedback(`Organization "${deletedTenantId}" decommissioned and safely archived in Deleted Vault.`);
+        }}
+        onViewVault={() => {
+          setActiveMainTab('vault');
+        }}
+        stats={deletingTenant ? tenantStats[deletingTenant.tenantId] : undefined}
+        currentUser={currentUser}
+      />
     </div>
   );
 }
