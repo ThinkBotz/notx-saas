@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   ShieldAlert,
   Users,
@@ -28,6 +28,7 @@ import {
   LifeBuoy,
   PhoneCall,
   Database,
+  Loader2,
   Trash2,
   Filter,
   Copy,
@@ -43,7 +44,10 @@ import {
   FolderArchive,
   AlertTriangle,
   Clock,
-
+  MessageSquare,
+  MessageCircle,
+  Inbox,
+  Send
 } from 'lucide-react';
 import {
   UserProfile,
@@ -55,7 +59,10 @@ import {
   CertificateTemplate,
   DEFAULT_CERTIFICATE_TEMPLATE,
   IssuedCertificate,
-  Tenant
+  Tenant,
+  SupportTicket,
+  TicketCategory,
+  TicketStatus
 } from '../types';
 import {
   updateUserProfile,
@@ -80,7 +87,11 @@ import {
   revokeBatchCertificatesForEvent,
   exportAllDatabaseData,
   subscribeToAppConfig,
-  createStudentAuthAccount
+  createStudentAuthAccount,
+  subscribeToTenantTickets,
+  addTicketReply,
+  updateTicketStatus,
+  markTicketRead
 } from '../firebase';
 import QRCameraScanner from "./QRCameraScanner";
 import EditSupportBoxModal from './EditSupportBoxModal';
@@ -129,7 +140,7 @@ interface AdminPanelViewProps {
   activeTenant?: Tenant | null;
 }
 
-type PanelTab = 'associates' | 'coordinators' | 'attendance' | 'students' | 'certificates' | 'settings';
+type PanelTab = 'associates' | 'coordinators' | 'attendance' | 'students' | 'certificates' | 'settings' | 'tickets';
 
 export default function AdminPanelView({
   currentUser,
@@ -143,6 +154,24 @@ export default function AdminPanelView({
 }: AdminPanelViewProps) {
   const activeTenantIdResolved = activeTenantId || currentUser.tenantId || '';
   const [copiedInviteLink, setCopiedInviteLink] = useState(false);
+
+  // Department Support Tickets State
+  const [tenantTickets, setTenantTickets] = useState<SupportTicket[]>([]);
+  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+  const [ticketSearch, setTicketSearch] = useState('');
+  const [ticketStatusFilter, setTicketStatusFilter] = useState<'all' | 'open' | 'resolved'>('all');
+  const [ticketReplyText, setTicketReplyText] = useState('');
+  const [isSendingTicketReply, setIsSendingTicketReply] = useState(false);
+  const [isUpdatingTicketStatus, setIsUpdatingTicketStatus] = useState(false);
+
+  // Real-time subscribe to department tickets
+  useEffect(() => {
+    if (!activeTenantIdResolved) return;
+    const unsub = subscribeToTenantTickets(activeTenantIdResolved, (list) => {
+      setTenantTickets(list);
+    });
+    return () => unsub();
+  }, [activeTenantIdResolved]);
 
   const handleCopyInviteLink = () => {
     const inviteUrl = `${window.location.origin}${window.location.pathname}?tenant=${activeTenantIdResolved}`;
@@ -166,6 +195,8 @@ export default function AdminPanelView({
   // Bulk Students states
   const [showBulkAdd, setShowBulkAdd] = useState(false);
   const [bulkMode, setBulkMode] = useState<'series' | 'column'>('series');
+  const [isGeneratingStudents, setIsGeneratingStudents] = useState(false);
+  const isGeneratingStudentsRef = useRef(false);
 
   // Series fields
   const [seriesPrefix, setSeriesPrefix] = useState('');
@@ -199,6 +230,12 @@ export default function AdminPanelView({
   const [assocSearchRoll, setAssocSearchRoll] = useState('');
   const [assocRollFocused, setAssocRollFocused] = useState(false);
   const [assocPosition, setAssocPosition] = useState('President');
+  const [assocTitleSelect, setAssocTitleSelect] = useState('President');
+  const [assocCustomTitle, setAssocCustomTitle] = useState('');
+  const [studentYearFilter, setStudentYearFilter] = useState('All');
+  const [studentSectionFilter, setStudentSectionFilter] = useState('All');
+  const [expandedGroupKeys, setExpandedGroupKeys] = useState<string[]>([]);
+  const masterCheckboxRef = useRef<HTMLInputElement>(null);
   const [assocPowers, setAssocPowers] = useState<AssociatePowers>({
     canManageEvents: false,
     canManageAnnouncements: false,
@@ -528,6 +565,132 @@ export default function AdminPanelView({
     r.rollNumber.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  // Memoized filtered and grouped students for the student directory
+  const filteredStudents = useMemo(() => {
+    return allUsers
+      .filter(u => u.role !== 'admin' && !u.isSuperAdmin && u.uid !== 'admin_master' && (!activeTenantIdResolved || (u.tenantId && u.tenantId.toLowerCase() === activeTenantIdResolved.toLowerCase())))
+      .filter(u => {
+        const matchesSearch = !studentSearch.trim() ||
+          u.rollNumber?.toLowerCase().includes(studentSearch.toLowerCase()) ||
+          u.name.toLowerCase().includes(studentSearch.toLowerCase());
+
+        const matchesYear = studentYearFilter === 'All' || 
+          (u.year && u.year.trim().toLowerCase() === studentYearFilter.trim().toLowerCase());
+
+        const matchesSection = studentSectionFilter === 'All' || 
+          ((u.section || 'A').trim().toUpperCase() === studentSectionFilter.trim().toUpperCase());
+
+        return matchesSearch && matchesYear && matchesSection;
+      });
+  }, [allUsers, studentSearch, studentYearFilter, studentSectionFilter, activeTenantIdResolved]);
+
+  const groupedStudents = useMemo(() => {
+    return filteredStudents.reduce((acc, student) => {
+      const key = `${student.year || 'Unknown Year'} - ${student.branch || 'Unknown Branch'} (Sec ${student.section || 'A'})`;
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(student);
+      return acc;
+    }, {} as Record<string, typeof filteredStudents>);
+  }, [filteredStudents]);
+
+  // Sync indeterminate state for master student selection checkbox
+  useEffect(() => {
+    if (masterCheckboxRef.current) {
+      const allSelected = filteredStudents.length > 0 && filteredStudents.every(s => selectedStudentIds.includes(s.uid));
+      const someSelected = filteredStudents.some(s => selectedStudentIds.includes(s.uid));
+      masterCheckboxRef.current.indeterminate = someSelected && !allSelected;
+    }
+  }, [filteredStudents, selectedStudentIds]);
+
+  const allGroupKeys = useMemo(() => Object.keys(groupedStudents), [groupedStudents]);
+  const isAllGroupsExpanded = allGroupKeys.length > 0 && allGroupKeys.every(k => expandedGroupKeys.includes(k));
+
+  const toggleGroupExpansion = (groupKey: string) => {
+    setExpandedGroupKeys(prev => 
+      prev.includes(groupKey) ? prev.filter(k => k !== groupKey) : [...prev, groupKey]
+    );
+  };
+
+  // Auto-expand all matching sections when a search query is active
+  useEffect(() => {
+    if (studentSearch.trim()) {
+      setExpandedGroupKeys(allGroupKeys);
+    }
+  }, [studentSearch, allGroupKeys]);
+
+  // Memoized filtered department tickets
+  const filteredTenantTickets = useMemo(() => {
+    return tenantTickets.filter(t => {
+      const q = ticketSearch.trim().toLowerCase();
+      const matchesSearch = !q ||
+        t.subject.toLowerCase().includes(q) ||
+        t.userName.toLowerCase().includes(q) ||
+        (t.userRoll && t.userRoll.toLowerCase().includes(q)) ||
+        t.userEmail.toLowerCase().includes(q) ||
+        (t.readableId && t.readableId.toLowerCase().includes(q));
+
+      const matchesStatus = ticketStatusFilter === 'all' ||
+        (ticketStatusFilter === 'open' && (t.status === 'open' || t.status === 'in_progress')) ||
+        (ticketStatusFilter === 'resolved' && (t.status === 'resolved' || t.status === 'closed'));
+
+      return matchesSearch && matchesStatus;
+    });
+  }, [tenantTickets, ticketSearch, ticketStatusFilter]);
+
+  const openTenantTicketsCount = tenantTickets.filter(t => t.status === 'open' || t.status === 'in_progress').length;
+  const selectedTicket = tenantTickets.find(t => t.id === selectedTicketId) || null;
+
+  // Mark ticket as read by admin when selected
+  useEffect(() => {
+    if (selectedTicket && selectedTicket.unreadByAdmin) {
+      markTicketRead(selectedTicket.id, 'admin').catch(err => {
+        console.warn('Failed to mark ticket read for admin:', err);
+      });
+    }
+  }, [selectedTicket?.id, selectedTicket?.unreadByAdmin]);
+
+  const handleSendDeptReply = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedTicket || !ticketReplyText.trim() || isSendingTicketReply) return;
+
+    setIsSendingTicketReply(true);
+    try {
+      await addTicketReply(
+        selectedTicket.id,
+        {
+          senderId: currentUser.uid,
+          senderName: currentUser.name || 'Department Admin',
+          senderEmail: currentUser.email,
+          senderRole: currentUser.role || 'admin',
+          message: ticketReplyText.trim()
+        },
+        true
+      );
+      setTicketReplyText('');
+      setFeedbackMsg(`Official department reply transmitted to ${selectedTicket.userName}!`);
+      setTimeout(() => setFeedbackMsg(''), 3500);
+    } catch (err: any) {
+      console.error('Failed to send dept reply:', err);
+      setFeedbackErr('Failed to transmit reply.');
+      setTimeout(() => setFeedbackErr(''), 3000);
+    } finally {
+      setIsSendingTicketReply(false);
+    }
+  };
+
+  const handleUpdateDeptTicketStatus = async (ticketId: string, newStatus: TicketStatus) => {
+    setIsUpdatingTicketStatus(true);
+    try {
+      await updateTicketStatus(ticketId, newStatus);
+      setFeedbackMsg(`Ticket status updated to ${newStatus.toUpperCase()}`);
+      setTimeout(() => setFeedbackMsg(''), 3000);
+    } catch (err) {
+      console.error('Failed to update ticket status:', err);
+    } finally {
+      setIsUpdatingTicketStatus(false);
+    }
+  };
+
   // Toggle Associate power (Admin only)
   const handleTogglePower = async (uid: string, powerKey: keyof AssociatePowers) => {
     if (!isAdmin) return;
@@ -692,15 +855,26 @@ export default function AdminPanelView({
       return;
     }
 
+    const effectivePosition = assocTitleSelect === 'other'
+      ? assocCustomTitle.trim()
+      : assocTitleSelect;
+
+    if (!effectivePosition) {
+      setFeedbackErr("Please specify a position title.");
+      return;
+    }
+
     try {
       await updateUserProfile(student.uid, {
         role: 'associate',
-        position: assocPosition,
+        position: effectivePosition,
         powers: assocPowers,
-        responsibilities: `Coordinating activities as ${assocPosition}.`
+        responsibilities: `Coordinating activities as ${effectivePosition}.`
       });
       setShowCreateAssociate(false);
       setAssocSearchRoll('');
+      setAssocTitleSelect('President');
+      setAssocCustomTitle('');
       refreshData();
     } catch (err) {
       console.error("Failed to assign associate role: ", err);
@@ -753,6 +927,10 @@ export default function AdminPanelView({
   const handleBulkAddStudents = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isAdmin) return;
+    if (isGeneratingStudentsRef.current) return;
+    isGeneratingStudentsRef.current = true;
+    setIsGeneratingStudents(true);
+
     setFeedbackMsg('');
     setFeedbackErr('');
 
@@ -761,12 +939,16 @@ export default function AdminPanelView({
     if (bulkMode === 'series') {
       if (!seriesPrefix || !seriesStart || !seriesEnd) {
         setFeedbackErr('Please fill in prefix, start index, and end index.');
+        isGeneratingStudentsRef.current = false;
+        setIsGeneratingStudents(false);
         return;
       }
       const startNum = parseInt(seriesStart, 36);
       const endNum = parseInt(seriesEnd, 36);
       if (isNaN(startNum) || isNaN(endNum) || startNum > endNum) {
         setFeedbackErr('Invalid start/end indices.');
+        isGeneratingStudentsRef.current = false;
+        setIsGeneratingStudents(false);
         return;
       }
       const padLen = Math.max(seriesStart.length, seriesEnd.length);
@@ -776,6 +958,8 @@ export default function AdminPanelView({
     } else {
       if (!bulkText.trim()) {
         setFeedbackErr('Please paste roll numbers in the text area.');
+        isGeneratingStudentsRef.current = false;
+        setIsGeneratingStudents(false);
         return;
       }
       rollsToCreate = bulkText
@@ -784,8 +968,13 @@ export default function AdminPanelView({
         .filter(s => s.length > 0);
     }
 
+    // Deduplicate any repeated roll numbers in the input set itself
+    rollsToCreate = Array.from(new Set(rollsToCreate));
+
     if (rollsToCreate.length === 0) {
       setFeedbackErr('No roll numbers generated.');
+      isGeneratingStudentsRef.current = false;
+      setIsGeneratingStudents(false);
       return;
     }
 
@@ -848,10 +1037,14 @@ export default function AdminPanelView({
       setSeriesStart('');
       setSeriesEnd('');
       setBulkText('');
+      setShowBulkAdd(false);
       refreshData();
     } catch (err) {
       console.error("Bulk add failed: ", err);
       setFeedbackErr('Failed to complete bulk import.');
+    } finally {
+      isGeneratingStudentsRef.current = false;
+      setIsGeneratingStudents(false);
     }
   };
 
@@ -1178,10 +1371,12 @@ export default function AdminPanelView({
               </button>
             )}
             <button
+              type="button"
               onClick={onClose}
-              className="nb-btn-icon !w-8 !h-8 rounded cursor-pointer"
+              className="w-8 h-8 rounded-md bg-[var(--nb-surface)] text-[var(--nb-content)] hover:bg-[var(--nb-surface-accent)] flex items-center justify-center border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none cursor-pointer transition-all shrink-0"
+              title="Close"
             >
-              <X className="w-4 h-4" />
+              <X className="w-4 h-4 stroke-[2.5]" />
             </button>
           </div>
         </div>
@@ -1197,7 +1392,7 @@ export default function AdminPanelView({
                   onClick={() => setActiveTab('associates')}
                   className={`py-1.5 px-3 text-xs font-mono font-bold uppercase tracking-wider rounded-md transition-all cursor-pointer shrink-0 whitespace-nowrap ${activeTab === 'associates'
                       ? 'nb-pill-blue text-white border-2 border-[var(--nb-ink)] shadow-[2.5px_2.5px_0_var(--nb-ink)]'
-                      : 'bg-[var(--nb-surface-accent)] text-[var(--nb-secondary)] border-1.5 border-[var(--nb-divider)] hover:border-[var(--nb-ink)] hover:text-[var(--nb-content)]'
+                      : 'bg-[var(--nb-surface)] text-[var(--nb-content)] border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none hover:bg-[var(--nb-surface-accent)]'
                     }`}
                 >
                   Associates
@@ -1206,7 +1401,7 @@ export default function AdminPanelView({
                   onClick={() => setActiveTab('coordinators')}
                   className={`py-1.5 px-3 text-xs font-mono font-bold uppercase tracking-wider rounded-md transition-all cursor-pointer shrink-0 whitespace-nowrap ${activeTab === 'coordinators'
                       ? 'nb-pill-cyan text-white border-2 border-[var(--nb-ink)] shadow-[2.5px_2.5px_0_var(--nb-ink)]'
-                      : 'bg-[var(--nb-surface-accent)] text-[var(--nb-secondary)] border-1.5 border-[var(--nb-divider)] hover:border-[var(--nb-ink)] hover:text-[var(--nb-content)]'
+                      : 'bg-[var(--nb-surface)] text-[var(--nb-content)] border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none hover:bg-[var(--nb-surface-accent)]'
                     }`}
                 >
                   Coordinators
@@ -1215,7 +1410,7 @@ export default function AdminPanelView({
                   onClick={() => setActiveTab('students')}
                   className={`py-1.5 px-3 text-xs font-mono font-bold uppercase tracking-wider rounded-md transition-all cursor-pointer shrink-0 whitespace-nowrap ${activeTab === 'students'
                       ? 'nb-pill-yellow text-neutral-900 border-2 border-[var(--nb-ink)] shadow-[2.5px_2.5px_0_var(--nb-ink)]'
-                      : 'bg-[var(--nb-surface-accent)] text-[var(--nb-secondary)] border-1.5 border-[var(--nb-divider)] hover:border-[var(--nb-ink)] hover:text-[var(--nb-content)]'
+                      : 'bg-[var(--nb-surface)] text-[var(--nb-content)] border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none hover:bg-[var(--nb-surface-accent)]'
                     }`}
                 >
                   Students DB
@@ -1224,7 +1419,7 @@ export default function AdminPanelView({
                   onClick={() => setActiveTab('certificates')}
                   className={`py-1.5 px-3 text-xs font-mono font-bold uppercase tracking-wider rounded-md transition-all cursor-pointer flex items-center gap-1.5 shrink-0 whitespace-nowrap ${activeTab === 'certificates'
                       ? 'nb-pill-purple text-white border-2 border-[var(--nb-ink)] shadow-[2.5px_2.5px_0_var(--nb-ink)]'
-                      : 'bg-[var(--nb-surface-accent)] text-[var(--nb-secondary)] border-1.5 border-[var(--nb-divider)] hover:border-[var(--nb-ink)] hover:text-[var(--nb-content)]'
+                      : 'bg-[var(--nb-surface)] text-[var(--nb-content)] border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none hover:bg-[var(--nb-surface-accent)]'
                     }`}
                 >
                   <Award className={`w-3.5 h-3.5 ${activeTab === 'certificates' ? 'text-white' : 'text-[var(--nb-accent)]'}`} />
@@ -1235,11 +1430,26 @@ export default function AdminPanelView({
                   onClick={() => setActiveTab('settings')}
                   className={`py-1.5 px-3 text-xs font-mono font-bold uppercase tracking-wider rounded-md transition-all cursor-pointer flex items-center gap-1.5 shrink-0 whitespace-nowrap ${activeTab === 'settings'
                       ? 'nb-pill-coral text-white border-2 border-[var(--nb-ink)] shadow-[2.5px_2.5px_0_var(--nb-ink)]'
-                      : 'bg-[var(--nb-surface-accent)] text-[var(--nb-secondary)] border-1.5 border-[var(--nb-divider)] hover:border-[var(--nb-ink)] hover:text-[var(--nb-content)]'
+                      : 'bg-[var(--nb-surface)] text-[var(--nb-content)] border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none hover:bg-[var(--nb-surface-accent)]'
                     }`}
                 >
                   <Settings className="w-3.5 h-3.5" />
                   Settings
+                </button>
+                <button
+                  onClick={() => setActiveTab('tickets')}
+                  className={`py-1.5 px-3 text-xs font-mono font-bold uppercase tracking-wider rounded-md transition-all cursor-pointer flex items-center gap-1.5 shrink-0 whitespace-nowrap relative ${activeTab === 'tickets'
+                      ? 'nb-pill-green text-neutral-900 border-2 border-[var(--nb-ink)] shadow-[2.5px_2.5px_0_var(--nb-ink)] font-black'
+                      : 'bg-[var(--nb-surface)] text-[var(--nb-content)] border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none hover:bg-[var(--nb-surface-accent)]'
+                    }`}
+                >
+                  <MessageSquare className="w-3.5 h-3.5" />
+                  <span>Tickets</span>
+                  {openTenantTicketsCount > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-full text-[9px] font-mono font-black bg-rose-500 text-white animate-pulse">
+                      {openTenantTicketsCount}
+                    </span>
+                  )}
                 </button>
               </>
             )}
@@ -1249,7 +1459,7 @@ export default function AdminPanelView({
                 onClick={() => setActiveTab('attendance')}
                 className={`py-1.5 px-3 text-xs font-mono font-bold uppercase tracking-wider rounded-md transition-all cursor-pointer shrink-0 whitespace-nowrap ${activeTab === 'attendance'
                     ? 'nb-pill-green text-neutral-900 border-2 border-[var(--nb-ink)] shadow-[2.5px_2.5px_0_var(--nb-ink)]'
-                    : 'bg-[var(--nb-surface-accent)] text-[var(--nb-secondary)] border-1.5 border-[var(--nb-divider)] hover:border-[var(--nb-ink)] hover:text-[var(--nb-content)]'
+                    : 'bg-[var(--nb-surface)] text-[var(--nb-content)] border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none hover:bg-[var(--nb-surface-accent)]'
                   }`}
               >
                 Attendance &amp; Registry
@@ -1359,16 +1569,40 @@ export default function AdminPanelView({
                       </div>
                     )}
                   </div>
-                  <div>
-                    <label className="nb-label text-[9px] text-[var(--nb-secondary)] block mb-1">POSITION / TITLE</label>
-                    <input
-                      type="text"
-                      required
-                      value={assocPosition}
-                      onChange={e => setAssocPosition(e.target.value)}
-                      placeholder="e.g. President, Vice President"
-                      className="nb-input py-1.5 text-xs w-full"
-                    />
+                  {/* POSITION / TITLE DROPDOWN WITH CUSTOM OPTION */}
+                  <div className="space-y-2">
+                    <label className="nb-label text-[11px] text-[var(--nb-secondary)] block mb-1">EXECUTIVE POSITION / TITLE</label>
+                    <select
+                      value={assocTitleSelect}
+                      onChange={e => setAssocTitleSelect(e.target.value)}
+                      className="nb-input py-1.5 text-xs w-full font-bold bg-[var(--nb-surface)] text-[var(--nb-content)] cursor-pointer"
+                    >
+                      <option value="President">President</option>
+                      <option value="Vice President">Vice President</option>
+                      <option value="General Secretary">General Secretary</option>
+                      <option value="Joint Secretary">Joint Secretary</option>
+                      <option value="Treasurer">Treasurer</option>
+                      <option value="Technical Head / Lead">Technical Head / Lead</option>
+                      <option value="Event Operations Lead">Event Operations Lead</option>
+                      <option value="PR & Social Media Lead">PR &amp; Social Media Lead</option>
+                      <option value="Design & Creative Lead">Design &amp; Creative Lead</option>
+                      <option value="other">Custom / Other (Enter custom title...)</option>
+                    </select>
+
+                    {assocTitleSelect === 'other' && (
+                      <div className="pt-1">
+                        <label className="nb-label text-[10px] text-[var(--nb-secondary)] block mb-1">ENTER CUSTOM POSITION TITLE *</label>
+                        <input 
+                          type="text" 
+                          required={assocTitleSelect === 'other'}
+                          value={assocCustomTitle} 
+                          onChange={e => setAssocCustomTitle(e.target.value)}
+                          placeholder="e.g. Innovation Head, Media Curator, Webmaster"
+                          className="nb-input py-1.5 text-xs w-full font-bold"
+                          autoFocus
+                        />
+                      </div>
+                    )}
                   </div>
 
                   <div>
@@ -1473,8 +1707,7 @@ export default function AdminPanelView({
                                 refreshData();
                               } catch (e) { console.error(e); }
                             }}
-                            className="nb-btn-ghost text-[10px] font-bold uppercase px-2 py-1 cursor-pointer"
-                            style={{ border: '1px solid var(--nb-ink)' }}
+                            className="nb-btn-ghost text-[10px] font-bold uppercase px-2.5 py-1 cursor-pointer"
                           >
                             Revoke Pres
                           </button>
@@ -1483,34 +1716,20 @@ export default function AdminPanelView({
                         {confirmDemoteId === assoc.uid ? (
                           <button
                             onClick={() => handleDemoteUser(assoc.uid)}
-                            className="text-[10px] bg-rose-500 text-white px-2 py-1 rounded font-bold uppercase cursor-pointer"
-                            style={{ border: '1px solid var(--nb-ink)' }}
+                            className="nb-btn nb-btn-danger text-[10px] px-2.5 py-1 font-bold uppercase cursor-pointer"
+                            title="Confirm revoking leadership powers"
                           >
-                            Sure?
+                            Confirm Revoke?
                           </button>
                         ) : (
                           <button
                             onClick={() => setConfirmDemoteId(assoc.uid)}
-                            className="nb-btn-ghost text-[10px] px-2 py-1 font-bold uppercase cursor-pointer"
-                            style={{ border: '1px solid var(--nb-ink)' }}
+                            className="nb-btn-ghost text-[10px] px-2.5 py-1 font-bold uppercase cursor-pointer text-rose-600 hover:text-rose-700"
+                            title="Revokes leadership privileges and restores profile as a standard student. To permanently delete the student account, manage them from the Student Database."
                           >
                             Revoke Role
                           </button>
                         )}
-                        <HoldButton
-                          size="sm"
-                          holdTime={1600}
-                          radius={4}
-                          backgroundColor="rgba(244, 63, 94, 0.1)"
-                          fillColor="#e11d48"
-                          textColor="#fda4af"
-                          fillTextColor="#ffffff"
-                          doneLabel="Deleted"
-                          onHold={() => handleDeleteUser(assoc.uid)}
-                          className="border border-rose-500/20 text-[10px] font-bold uppercase !h-6 !px-2"
-                        >
-                          Hold to Delete
-                        </HoldButton>
                       </div>
                     </div>
 
@@ -1744,34 +1963,20 @@ export default function AdminPanelView({
                           {confirmDemoteId === coord.uid ? (
                             <button
                               onClick={() => handleDemoteUser(coord.uid)}
-                              className="text-[9px] bg-rose-500 text-white px-2 py-1.5 rounded font-bold uppercase cursor-pointer"
-                              style={{ border: '1px solid var(--nb-ink)' }}
+                              className="nb-btn nb-btn-danger text-[9px] px-2.5 py-1.5 font-bold uppercase cursor-pointer"
+                              title="Confirm revoking coordinator role"
                             >
-                              Sure?
+                              Confirm Revoke?
                             </button>
                           ) : (
                             <button
                               onClick={() => setConfirmDemoteId(coord.uid)}
-                              className="nb-btn-ghost text-[9px] px-2 py-1.5 font-bold uppercase cursor-pointer"
-                              style={{ border: '1px solid var(--nb-ink)' }}
+                              className="nb-btn-ghost text-[9px] px-2.5 py-1.5 font-bold uppercase cursor-pointer text-rose-600 hover:text-rose-700"
+                              title="Revokes coordinator privileges and restores profile as a standard student. To permanently delete the student account, manage them from the Student Database."
                             >
                               Revoke
                             </button>
                           )}
-                          <HoldButton
-                            size="sm"
-                            holdTime={1600}
-                            radius={4}
-                            backgroundColor="rgba(244, 63, 94, 0.1)"
-                            fillColor="#e11d48"
-                            textColor="#fda4af"
-                            fillTextColor="#ffffff"
-                            doneLabel="Deleted"
-                            onHold={() => handleDeleteUser(coord.uid)}
-                            className="border border-rose-500/20 text-[9px] font-bold uppercase !h-7 !px-2 shrink-0"
-                          >
-                            Hold to Delete
-                          </HoldButton>
                         </div>
                       </div>
                     </div>
@@ -2171,8 +2376,7 @@ export default function AdminPanelView({
                                       {reg.status === 'Attended' ? (
                                         <button
                                           onClick={() => handleToggleAttendance(reg.registrationId, false)}
-                                          className="text-[9px] bg-rose-500 text-white px-2 py-1 rounded font-bold uppercase cursor-pointer hover:bg-rose-600"
-                                          style={{ border: '1px solid var(--nb-ink)' }}
+                                          className="nb-btn nb-btn-danger text-[9px] px-2.5 py-1 font-bold uppercase cursor-pointer"
                                         >
                                           Revoke
                                         </button>
@@ -2187,8 +2391,7 @@ export default function AdminPanelView({
                                       ) : (
                                         <button
                                           onClick={() => handleToggleAttendance(reg.registrationId, true)}
-                                          className="nb-btn text-[9px] px-2 py-1 font-bold uppercase cursor-pointer"
-                                          style={{ border: '1px solid var(--nb-ink)' }}
+                                          className="nb-btn nb-btn-success text-[9px] px-2.5 py-1 font-bold uppercase cursor-pointer"
                                         >
                                           Mark Present
                                         </button>
@@ -2318,11 +2521,10 @@ export default function AdminPanelView({
                       <button
                         type="button"
                         onClick={() => setPasswordOption('roll')}
-                        className={`text-xs font-bold p-2 rounded transition-all text-center flex flex-col items-center justify-center gap-0.5 cursor-pointer ${passwordOption === 'roll'
-                            ? 'bg-[var(--nb-surface-accent)] text-[var(--nb-content)]'
-                            : 'bg-[var(--nb-surface)] text-[var(--nb-secondary)] opacity-70'
+                        className={`text-xs font-bold p-2 rounded-md transition-all text-center flex flex-col items-center justify-center gap-0.5 cursor-pointer active:translate-x-0.5 active:translate-y-0.5 ${passwordOption === 'roll'
+                            ? 'bg-[var(--nb-surface)] text-[var(--nb-content)] border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)] active:shadow-none'
+                            : 'bg-[var(--nb-surface-accent)] text-[var(--nb-secondary)] border-2 border-[var(--nb-ink)]/30 hover:border-[var(--nb-ink)]'
                           }`}
-                        style={{ border: passwordOption === 'roll' ? '2px solid var(--nb-ink)' : '1px solid var(--nb-ink)/30' }}
                       >
                         <span className="font-bold">Same as Roll</span>
                         <span className="text-[9px] font-mono text-[var(--nb-secondary)]">Pass = Roll</span>
@@ -2330,11 +2532,10 @@ export default function AdminPanelView({
                       <button
                         type="button"
                         onClick={() => setPasswordOption('preset')}
-                        className={`text-xs font-bold p-2 rounded transition-all text-center flex flex-col items-center justify-center gap-0.5 cursor-pointer ${passwordOption === 'preset'
-                            ? 'bg-[var(--nb-surface-accent)] text-[var(--nb-content)]'
-                            : 'bg-[var(--nb-surface)] text-[var(--nb-secondary)] opacity-70'
+                        className={`text-xs font-bold p-2 rounded-md transition-all text-center flex flex-col items-center justify-center gap-0.5 cursor-pointer active:translate-x-0.5 active:translate-y-0.5 ${passwordOption === 'preset'
+                            ? 'bg-[var(--nb-surface)] text-[var(--nb-content)] border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)] active:shadow-none'
+                            : 'bg-[var(--nb-surface-accent)] text-[var(--nb-secondary)] border-2 border-[var(--nb-ink)]/30 hover:border-[var(--nb-ink)]'
                           }`}
-                        style={{ border: passwordOption === 'preset' ? '2px solid var(--nb-ink)' : '1px solid var(--nb-ink)/30' }}
                       >
                         <span className="font-bold">Preset Code</span>
                         <span className="text-[9px] font-mono text-[var(--nb-secondary)]">Welcome@123</span>
@@ -2342,11 +2543,10 @@ export default function AdminPanelView({
                       <button
                         type="button"
                         onClick={() => setPasswordOption('random')}
-                        className={`text-xs font-bold p-2 rounded transition-all text-center flex flex-col items-center justify-center gap-0.5 cursor-pointer ${passwordOption === 'random'
-                            ? 'bg-[var(--nb-surface-accent)] text-[var(--nb-content)]'
-                            : 'bg-[var(--nb-surface)] text-[var(--nb-secondary)] opacity-70'
+                        className={`text-xs font-bold p-2 rounded-md transition-all text-center flex flex-col items-center justify-center gap-0.5 cursor-pointer active:translate-x-0.5 active:translate-y-0.5 ${passwordOption === 'random'
+                            ? 'bg-[var(--nb-surface)] text-[var(--nb-content)] border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)] active:shadow-none'
+                            : 'bg-[var(--nb-surface-accent)] text-[var(--nb-secondary)] border-2 border-[var(--nb-ink)]/30 hover:border-[var(--nb-ink)]'
                           }`}
-                        style={{ border: passwordOption === 'random' ? '2px solid var(--nb-ink)' : '1px solid var(--nb-ink)/30' }}
                       >
                         <span className="font-bold">Random Alpha</span>
                         <span className="text-[9px] font-mono text-[var(--nb-secondary)]">e.g. K7L9Z4</span>
@@ -2370,118 +2570,276 @@ export default function AdminPanelView({
                   <button
                     type="button"
                     onClick={handleBulkAddStudents}
-                    className="w-full nb-btn py-2.5 text-xs font-bold uppercase cursor-pointer flex items-center justify-center gap-1.5"
+                    disabled={isGeneratingStudents}
+                    className="w-full nb-btn py-2.5 text-xs font-bold uppercase cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <Sparkles className="w-4 h-4" />
-                    Generate & Save Student Profiles
+                    {isGeneratingStudents ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Generating Profiles... Please wait
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4" />
+                        Generate &amp; Save Student Profiles
+                      </>
+                    )}
                   </button>
                 </div>
               )}
 
               {/* STUDENT LIST WITH GROUPING AND SEARCH */}
               <div className="flex flex-col gap-2">
-                <div
-                  className="flex justify-between items-center bg-[var(--nb-surface)] rounded-lg px-3 py-2"
-                  style={{ border: '1.5px solid var(--nb-ink)' }}
+                {/* Search and Filters Bar with Neo-Brutalism */}
+                <div 
+                  className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2 p-2.5 bg-white"
+                  style={{ border: '2px solid var(--nb-ink)', boxShadow: '3px 3px 0px 0px var(--nb-ink)' }}
                 >
-                  <div className="flex items-center gap-2 w-full">
-                    <Search className="w-4 h-4 text-[var(--nb-secondary)] flex-shrink-0" />
+                  <div className="flex items-center gap-2 flex-1 min-w-[200px] border-2 border-[var(--nb-ink)] px-2.5 py-1.5 bg-[var(--nb-surface)] shadow-[2px_2px_0px_0px_var(--nb-ink)]">
+                    <Search className="w-3.5 h-3.5 text-[var(--nb-secondary)] flex-shrink-0" />
                     <input
                       type="text"
-                      placeholder="Search students by roll number or name..."
+                      placeholder="Search roll number or name..."
                       value={studentSearch}
                       onChange={(e) => setStudentSearch(e.target.value)}
                       className="bg-transparent border-none text-xs text-[var(--nb-content)] placeholder:text-[var(--nb-secondary)] outline-none w-full font-bold"
                     />
+                    {studentSearch && (
+                      <button 
+                        type="button" 
+                        onClick={() => setStudentSearch('')}
+                        className="text-xs font-black text-rose-500 hover:text-rose-700 cursor-pointer"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Filter Selects */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex items-center gap-1">
+                      <label className="text-[10px] font-black uppercase text-[var(--nb-secondary)]">Year:</label>
+                      <select
+                        value={studentYearFilter}
+                        onChange={(e) => setStudentYearFilter(e.target.value)}
+                        className="text-xs font-black bg-white border-2 border-[var(--nb-ink)] px-2 py-1 shadow-[2px_2px_0px_0px_var(--nb-ink)] outline-none cursor-pointer"
+                      >
+                        <option value="All">All Years</option>
+                        <option value="I Year">I Year</option>
+                        <option value="II Year">II Year</option>
+                        <option value="III Year">III Year</option>
+                        <option value="IV Year">IV Year</option>
+                        <option value="1st Year">1st Year</option>
+                        <option value="2nd Year">2nd Year</option>
+                        <option value="3rd Year">3rd Year</option>
+                        <option value="4th Year">4th Year</option>
+                      </select>
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      <label className="text-[10px] font-black uppercase text-[var(--nb-secondary)]">Sec:</label>
+                      <select
+                        value={studentSectionFilter}
+                        onChange={(e) => setStudentSectionFilter(e.target.value)}
+                        className="text-xs font-black bg-white border-2 border-[var(--nb-ink)] px-2 py-1 shadow-[2px_2px_0px_0px_var(--nb-ink)] outline-none cursor-pointer"
+                      >
+                        <option value="All">All Sec</option>
+                        <option value="A">Section A</option>
+                        <option value="B">Section B</option>
+                        <option value="C">Section C</option>
+                        <option value="D">Section D</option>
+                      </select>
+                    </div>
+
+                    {(studentYearFilter !== 'All' || studentSectionFilter !== 'All' || studentSearch) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStudentYearFilter('All');
+                          setStudentSectionFilter('All');
+                          setStudentSearch('');
+                        }}
+                        className="px-2 py-1 text-[10px] font-black uppercase bg-rose-100 text-rose-700 border-2 border-[var(--nb-ink)] hover:bg-rose-200 transition-colors cursor-pointer"
+                        style={{ border: '2px solid var(--nb-ink)', boxShadow: '3px 3px 0px 0px var(--nb-ink)' }}
+                        title="Reset all filters"
+                      >
+                        Reset
+                      </button>
+                    )}
                   </div>
                 </div>
 
-                <div className="flex justify-between items-center px-1">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
+                {/* Selection & Bulk Actions Row with Neo-Brutalism */}
+                <div 
+                  className="flex flex-wrap justify-between items-center gap-2 p-2.5 bg-white"
+                  style={{ border: '2px solid var(--nb-ink)', boxShadow: '2px 2px 0px 0px var(--nb-ink)' }}
+                >
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <input 
+                      type="checkbox" 
                       id="selectAll"
-                      className="accent-[var(--nb-accent)] w-3.5 h-3.5 cursor-pointer"
+                      ref={masterCheckboxRef}
+                      className="w-4 h-4 cursor-pointer accent-amber-400 rounded-none border-2 border-[var(--nb-ink)]"
                       checked={
-                        allUsers.filter(u => u.role === 'student' && (!activeTenantIdResolved || (u.tenantId && u.tenantId.toLowerCase() === activeTenantIdResolved.toLowerCase()))).filter(u =>
-                          u.rollNumber?.toLowerCase().includes(studentSearch.toLowerCase()) ||
-                          u.name.toLowerCase().includes(studentSearch.toLowerCase())
-                        ).length > 0 &&
-                        selectedStudentIds.length === allUsers.filter(u => u.role === 'student' && (!activeTenantIdResolved || (u.tenantId && u.tenantId.toLowerCase() === activeTenantIdResolved.toLowerCase()))).filter(u =>
-                          u.rollNumber?.toLowerCase().includes(studentSearch.toLowerCase()) ||
-                          u.name.toLowerCase().includes(studentSearch.toLowerCase())
-                        ).length
+                        filteredStudents.length > 0 && 
+                        filteredStudents.every(s => selectedStudentIds.includes(s.uid))
                       }
                       onChange={(e) => {
-                        const filtered = allUsers.filter(u => u.role === 'student' && (!activeTenantIdResolved || (u.tenantId && u.tenantId.toLowerCase() === activeTenantIdResolved.toLowerCase()))).filter(u =>
-                          u.rollNumber?.toLowerCase().includes(studentSearch.toLowerCase()) ||
-                          u.name.toLowerCase().includes(studentSearch.toLowerCase())
-                        );
                         if (e.target.checked) {
-                          setSelectedStudentIds(filtered.map(s => s.uid));
+                          const visibleIds = filteredStudents.map(s => s.uid);
+                          setSelectedStudentIds(prev => Array.from(new Set([...prev, ...visibleIds])));
                         } else {
-                          setSelectedStudentIds([]);
+                          const visibleIds = new Set(filteredStudents.map(s => s.uid));
+                          setSelectedStudentIds(prev => prev.filter(id => !visibleIds.has(id)));
                         }
                       }}
                     />
-                    <label htmlFor="selectAll" className="nb-label text-[10px] text-[var(--nb-secondary)] cursor-pointer">
-                      SELECT ALL VISIBLE
+                    <label htmlFor="selectAll" className="text-xs font-black uppercase tracking-wider text-[var(--nb-ink)] cursor-pointer select-none">
+                      SELECT ALL VISIBLE ({filteredStudents.length})
                     </label>
-                  </div>
 
-                  {selectedStudentIds.length > 0 && (
-                    <HoldButton
-                      size="sm"
-                      holdTime={2000}
-                      radius={4}
-                      backgroundColor="rgba(244, 63, 94, 0.15)"
-                      fillColor="#e11d48"
-                      textColor="#fda4af"
-                      fillTextColor="#ffffff"
-                      doneLabel="Deleted Selected"
-                      onHold={handleBulkDeleteStudents}
-                      icon={<Trash2 className="w-3.5 h-3.5" />}
-                      className="border border-rose-500 text-[10px] font-bold uppercase !h-8 !px-3 cursor-pointer"
-                      style={{ border: '1.5px solid var(--nb-ink)' }}
-                    >
-                      Hold to Delete ({selectedStudentIds.length})
-                    </HoldButton>
-                  )}
+                    {selectedStudentIds.length > 0 && (
+                      <div className="flex items-center gap-2 ml-1">
+                        <span className="px-2 py-0.5 text-[10px] font-black font-mono uppercase bg-amber-300 text-black border-2 border-[var(--nb-ink)] shadow-[2px_2px_0px_0px_var(--nb-ink)]">
+                          {selectedStudentIds.length} SELECTED
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedStudentIds([])}
+                          className="px-2 py-0.5 rounded bg-[var(--nb-surface)] text-[var(--nb-content)] text-[10px] font-mono font-bold uppercase border-2 border-[var(--nb-ink)] shadow-[1.5px_1.5px_0_var(--nb-ink)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none hover:bg-[var(--nb-surface-accent)] cursor-pointer transition-all"
+                        >
+                          Deselect All
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    {allGroupKeys.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (isAllGroupsExpanded) {
+                            setExpandedGroupKeys([]);
+                          } else {
+                            setExpandedGroupKeys(allGroupKeys);
+                          }
+                        }}
+                        className="px-2.5 py-1 text-[11px] font-black uppercase bg-white text-black border-2 border-[var(--nb-ink)] shadow-[2px_2px_0px_0px_var(--nb-ink)] hover:translate-x-0.5 hover:translate-y-0.5 transition-all cursor-pointer"
+                        title={isAllGroupsExpanded ? "Collapse all sections" : "Expand all sections"}
+                      >
+                        {isAllGroupsExpanded ? "Collapse All" : "Expand All"}
+                      </button>
+                    )}
+
+                    {selectedStudentIds.length > 0 && (
+                      <HoldButton 
+                        size="sm"
+                        holdTime={2000}
+                        radius={0}
+                        backgroundColor="#ffe4e6"
+                        fillColor="#e11d48"
+                        textColor="#9f1239"
+                        fillTextColor="#ffffff"
+                        doneLabel="Deleted Selected"
+                        onHold={handleBulkDeleteStudents}
+                        icon={<Trash2 className="w-3.5 h-3.5 stroke-[2.5]" />}
+                        className="!h-8 !px-3 font-black uppercase text-xs cursor-pointer hover:translate-x-0.5 hover:translate-y-0.5 transition-all"
+                        style={{ border: '2px solid var(--nb-ink)', boxShadow: '3px 3px 0px 0px var(--nb-ink)' }}
+                      >
+                        Hold to Delete ({selectedStudentIds.length})
+                      </HoldButton>
+                    )}
+                  </div>
                 </div>
               </div>
 
               <div className="space-y-4 max-h-[450px] overflow-y-auto pr-1">
                 {(() => {
-                  const filteredStudents = allUsers.filter(u => u.role === 'student' && (!activeTenantIdResolved || (u.tenantId && u.tenantId.toLowerCase() === activeTenantIdResolved.toLowerCase()))).filter(u =>
-                    u.rollNumber?.toLowerCase().includes(studentSearch.toLowerCase()) ||
-                    u.name.toLowerCase().includes(studentSearch.toLowerCase())
-                  );
-
                   if (filteredStudents.length === 0) {
                     return (
-                      <div className="text-center py-6 text-xs text-[var(--nb-secondary)]">
-                        No students found. Use the bulk importer above to populate the database!
+                      <div className="text-center py-8 text-xs text-[var(--nb-secondary)] space-y-2">
+                        <p className="font-bold">No students found matching your criteria.</p>
+                        {(studentSearch || studentYearFilter !== 'All' || studentSectionFilter !== 'All') ? (
+                          <p className="text-[11px]">
+                            Try adjusting or{' '}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setStudentSearch('');
+                                setStudentYearFilter('All');
+                                setStudentSectionFilter('All');
+                                setSelectedStudentIds([]);
+                              }}
+                              className="underline font-bold text-[var(--nb-accent)] cursor-pointer"
+                            >
+                              clearing your filters
+                            </button>
+                            .
+                          </p>
+                        ) : (
+                          <p className="text-[11px]">Use the bulk importer above to populate the database!</p>
+                        )}
                       </div>
                     );
                   }
 
-                  const groupedStudents = filteredStudents.reduce((acc, student) => {
-                    const key = `${student.year || 'Unknown Year'} - ${student.branch || 'Unknown Branch'} (Sec ${student.section || 'A'})`;
-                    if (!acc[key]) acc[key] = [];
-                    acc[key].push(student);
-                    return acc;
-                  }, {} as Record<string, typeof filteredStudents>);
+                  return Object.entries(groupedStudents).map(([groupKey, studentsInGroup]) => {
+                    const groupUids = studentsInGroup.map(s => s.uid);
+                    const isAllGroupSelected = groupUids.length > 0 && groupUids.every(id => selectedStudentIds.includes(id));
+                    const isSomeGroupSelected = groupUids.some(id => selectedStudentIds.includes(id));
+                    const isGroupExpanded = expandedGroupKeys.includes(groupKey);
 
-                  return Object.entries(groupedStudents).map(([groupKey, studentsInGroup]) => (
-                    <div
-                      key={groupKey}
-                      className="bg-[var(--nb-surface)] rounded-lg p-4 space-y-2.5"
-                      style={{ border: '2px solid var(--nb-ink)', boxShadow: 'var(--shadow-hard-sm)' }}
-                    >
-                      <div className="nb-label text-[10px] text-[var(--nb-content)] uppercase tracking-wider mb-2 border-b-2 border-[var(--nb-ink)] pb-2 flex justify-between items-center">
-                        <span>{groupKey}</span>
-                        <span className="nb-tag text-[9px] font-mono font-bold">{studentsInGroup.length} Students</span>
-                      </div>
+                    return (
+                      <div 
+                        key={groupKey} 
+                        className="bg-[var(--nb-surface)] p-3.5 space-y-3 transition-all"
+                        style={{ border: '2.5px solid var(--nb-ink)', boxShadow: '4px 4px 0px 0px var(--nb-ink)' }}
+                      >
+                        {/* Section Header: Click to Expand / Collapse */}
+                        <div 
+                          onClick={() => toggleGroupExpansion(groupKey)}
+                          className={`flex justify-between items-center cursor-pointer select-none flex-wrap gap-2 ${
+                            isGroupExpanded ? 'border-b-2 border-[var(--nb-ink)] pb-3' : ''
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <div onClick={(e) => e.stopPropagation()}>
+                              <input 
+                                type="checkbox" 
+                                checked={isAllGroupSelected}
+                                ref={el => { if (el) el.indeterminate = isSomeGroupSelected && !isAllGroupSelected; }}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setSelectedStudentIds(prev => Array.from(new Set([...prev, ...groupUids])));
+                                  } else {
+                                    const groupSet = new Set(groupUids);
+                                    setSelectedStudentIds(prev => prev.filter(id => !groupSet.has(id)));
+                                  }
+                                }}
+                                className="w-4 h-4 cursor-pointer accent-amber-400 rounded-none border-2 border-[var(--nb-ink)]"
+                                title={`Select all in ${groupKey}`}
+                              />
+                            </div>
+                            <span className="font-black text-xs sm:text-sm uppercase tracking-tight text-[var(--nb-content)]">
+                              {groupKey}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <span className="nb-tag text-[11px] font-mono font-black border-2 border-[var(--nb-ink)] bg-white shadow-[2px_2px_0px_0px_var(--nb-ink)]">
+                              {studentsInGroup.length} Students
+                            </span>
+                            <span 
+                              className="px-2 py-0.5 text-xs font-mono font-black border-2 border-[var(--nb-ink)] bg-[var(--nb-yellow)] text-black shadow-[1.5px_1.5px_0px_0px_var(--nb-ink)]"
+                            >
+                              {isGroupExpanded ? '▲ HIDE' : '▼ SHOW'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Collapsible Student Content Body */}
+                        {isGroupExpanded && (
                       <div className="space-y-2">
                         {studentsInGroup.map((student) => {
                           const isExpanded = expandedStudentId === student.uid;
@@ -2493,7 +2851,7 @@ export default function AdminPanelView({
                               style={{ border: '1.5px solid var(--nb-ink)' }}
                             >
                               <div className="flex justify-between items-center w-full">
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 flex-wrap min-w-0">
                                   <div className="flex items-center justify-center mr-1" onClick={(e) => e.stopPropagation()}>
                                     <input
                                       type="checkbox"
@@ -2515,8 +2873,23 @@ export default function AdminPanelView({
                                     {student.rollNumber || 'NO ROLL'}
                                   </span>
                                   <h5 className="nb-headline text-xs text-[var(--nb-content)] truncate">{student.name}</h5>
+                                  {student.role === 'associate' && (
+                                    <span className="nb-pill-purple text-[8.5px] font-mono font-bold uppercase px-1.5 py-0.5 rounded shadow-[1px_1px_0_var(--nb-ink)]">
+                                      {student.position || 'Associate'}
+                                    </span>
+                                  )}
+                                  {student.role === 'coordinator' && (
+                                    <span className="nb-pill-cyan text-[8.5px] font-mono font-bold uppercase px-1.5 py-0.5 rounded shadow-[1px_1px_0_var(--nb-ink)]">
+                                      Coordinator
+                                    </span>
+                                  )}
+                                  {student.role === 'president' && (
+                                    <span className="nb-pill-yellow text-[8.5px] font-mono font-bold uppercase px-1.5 py-0.5 rounded text-neutral-900 shadow-[1px_1px_0_var(--nb-ink)]">
+                                      President
+                                    </span>
+                                  )}
                                 </div>
-                                <span className="nb-tag text-[10px] font-mono font-bold">{isExpanded ? '[-]' : '[+]'}</span>
+                                <span className="nb-tag text-[10px] font-mono font-bold shrink-0">{isExpanded ? '[-]' : '[+]'}</span>
                               </div>
 
                               {isExpanded && (
@@ -2561,8 +2934,10 @@ export default function AdminPanelView({
                           );
                         })}
                       </div>
-                    </div>
-                  ));
+                    )}
+                  </div>
+                );
+                  });
                 })()}
               </div>
             </div>
@@ -4009,6 +4384,354 @@ export default function AdminPanelView({
                 </div>
 
               </div>
+            </div>
+          )}
+
+          {/* ==================== 7. SUPPORT TICKETS MANAGEMENT TAB ==================== */}
+          {activeTab === 'tickets' && (
+            <div className="space-y-4">
+              {/* Header Card */}
+              <div 
+                className="bg-[var(--nb-surface)] p-4 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                style={{ border: '2px solid var(--nb-ink)', boxShadow: 'var(--shadow-hard-sm)' }}
+              >
+                <div>
+                  <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-600/30 mb-1.5">
+                    <MessageSquare className="w-3 h-3" />
+                    <span>DEPARTMENT SUPPORT HELPDESK</span>
+                  </div>
+                  <h3 className="nb-headline text-base sm:text-lg text-[var(--nb-content)]">
+                    Student Queries &amp; Grievances Desk
+                  </h3>
+                  <p className="nb-label text-[10px] text-[var(--nb-secondary)]">
+                    Direct two-way channel for students of {activeTenant?.name || 'your department'}. Review inquiries, clarify permissions, and transmit official responses.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="px-2.5 py-1 rounded bg-[var(--nb-surface-accent)] border border-[var(--nb-ink)] text-center min-w-[65px]">
+                    <div className="text-sm font-black font-mono leading-none">{tenantTickets.length}</div>
+                    <div className="text-[8.5px] font-mono text-[var(--nb-secondary)] uppercase mt-0.5">Total</div>
+                  </div>
+                  <div className="px-2.5 py-1 rounded bg-amber-500/15 border border-amber-500/40 text-center min-w-[65px]">
+                    <div className="text-sm font-black font-mono text-amber-700 dark:text-amber-400 leading-none">{openTenantTicketsCount}</div>
+                    <div className="text-[8.5px] font-mono text-amber-700 dark:text-amber-400 uppercase mt-0.5">Pending</div>
+                  </div>
+                  <div className="px-2.5 py-1 rounded bg-emerald-500/15 border border-emerald-500/40 text-center min-w-[65px]">
+                    <div className="text-sm font-black font-mono text-emerald-700 dark:text-emerald-400 leading-none">
+                      {tenantTickets.filter(t => t.status === 'resolved' || t.status === 'closed').length}
+                    </div>
+                    <div className="text-[8.5px] font-mono text-emerald-700 dark:text-emerald-400 uppercase mt-0.5">Resolved</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Filter & Search Toolbar */}
+              <div 
+                className="bg-[var(--nb-surface)] p-3 rounded-lg flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5"
+                style={{ border: '1.5px solid var(--nb-ink)' }}
+              >
+                <div className="relative flex-1">
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--nb-secondary)] pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder="Search query topic, student name, roll number, or ticket ID..."
+                    value={ticketSearch}
+                    onChange={(e) => setTicketSearch(e.target.value)}
+                    className="w-full pl-8 pr-7 py-1.5 text-xs bg-[var(--nb-surface-accent)] rounded border border-[var(--nb-ink)] text-[var(--nb-content)] placeholder:text-[var(--nb-secondary)] outline-none font-medium"
+                  />
+                  {ticketSearch && (
+                    <button 
+                      onClick={() => setTicketSearch('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--nb-secondary)] hover:text-[var(--nb-content)] cursor-pointer"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {(['all', 'open', 'resolved'] as const).map((filter) => (
+                    <button
+                      key={filter}
+                      type="button"
+                      onClick={() => setTicketStatusFilter(filter)}
+                      className={`px-2.5 py-1 rounded text-[10px] font-mono font-bold uppercase transition-all cursor-pointer ${
+                        ticketStatusFilter === filter
+                          ? 'bg-[var(--nb-ink)] text-[var(--nb-bg)] font-black'
+                          : 'bg-[var(--nb-surface-accent)] text-[var(--nb-secondary)] hover:text-[var(--nb-content)]'
+                      }`}
+                    >
+                      {filter === 'all' ? `All (${tenantTickets.length})` : filter}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Master-Detail Split Grid */}
+              {filteredTenantTickets.length === 0 ? (
+                <div 
+                  className="p-12 text-center bg-[var(--nb-surface)] rounded-lg space-y-2"
+                  style={{ border: '2px solid var(--nb-ink)', boxShadow: 'var(--shadow-hard-sm)' }}
+                >
+                  <MessageSquare className="w-8 h-8 text-[var(--nb-secondary)] mx-auto opacity-50" />
+                  <h4 className="nb-headline text-sm text-[var(--nb-content)]">No Support Queries Found</h4>
+                  <p className="text-xs text-[var(--nb-secondary)] max-w-sm mx-auto">
+                    {tenantTickets.length === 0
+                      ? "When students submit queries from the Contact & Support box, they will appear here in real-time."
+                      : "No queries match your search or status filter."}
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 items-start">
+                  
+                  {/* Left Column: Tickets Queue (5 cols) */}
+                  <div className="lg:col-span-5 space-y-2 max-h-[680px] overflow-y-auto pr-1">
+                    {filteredTenantTickets.map((t) => {
+                      const isSelected = selectedTicketId === t.id;
+                      const replyCount = t.replies?.length || 0;
+
+                      return (
+                        <div
+                          key={t.id}
+                          onClick={() => setSelectedTicketId(t.id)}
+                          className={`p-3 rounded-lg border-2 transition-all cursor-pointer text-left space-y-1.5 ${
+                            isSelected
+                              ? 'bg-[var(--nb-surface)] border-[var(--nb-ink)] shadow-[3px_3px_0_var(--nb-ink)]'
+                              : 'bg-[var(--nb-surface)] border-[var(--nb-ink)]/30 hover:border-[var(--nb-ink)] hover:bg-[var(--nb-surface-accent)]'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-1.5">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-mono text-xs font-black text-[var(--nb-accent)]">
+                                #{t.readableId || t.id.slice(0, 8)}
+                              </span>
+                              <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold bg-[var(--nb-surface-accent)] text-[var(--nb-secondary)] border border-[var(--nb-ink)]/20">
+                                {t.category}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-1">
+                              {t.unreadByAdmin && (
+                                <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" title="Unread student query" />
+                              )}
+                              <span className={`px-1.5 py-0.2 rounded text-[9px] font-mono font-black uppercase ${
+                                t.status === 'open'
+                                  ? 'bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-600/30'
+                                  : t.status === 'in_progress'
+                                  ? 'bg-sky-500/20 text-sky-700 dark:text-sky-400 border border-sky-600/30'
+                                  : t.status === 'resolved'
+                                  ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-600/30'
+                                  : 'bg-neutral-500/20 text-neutral-600 dark:text-neutral-400 border border-neutral-600/30'
+                              }`}>
+                                {t.status.replace('_', ' ')}
+                              </span>
+                            </div>
+                          </div>
+
+                          <h5 className="nb-headline text-xs line-clamp-1 text-[var(--nb-content)]">
+                            {t.subject}
+                          </h5>
+
+                          <p className="text-[11px] text-[var(--nb-secondary)] line-clamp-2 font-sans">
+                            {t.message}
+                          </p>
+
+                          <div className="flex items-center justify-between text-[9.5px] font-mono text-[var(--nb-secondary)] pt-1 border-t border-[var(--nb-ink)]/10">
+                            <span className="truncate max-w-[170px] font-bold text-[var(--nb-content)]">
+                              {t.userName} ({t.userRoll || t.userEmail})
+                            </span>
+                            <span>{replyCount} {replyCount === 1 ? 'reply' : 'replies'}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Right Column: Selected Ticket Thread & Reply Form (7 cols) */}
+                  <div className="lg:col-span-7">
+                    {selectedTicket ? (
+                      <div 
+                        className="bg-[var(--nb-surface)] rounded-lg border-2 border-[var(--nb-ink)] shadow-[3px_3px_0_var(--nb-ink)] overflow-hidden flex flex-col"
+                      >
+                        {/* Top bar */}
+                        <div className="p-3.5 bg-[var(--nb-surface-accent)] border-b-2 border-[var(--nb-ink)] flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                              <span className="font-mono text-xs font-black text-[var(--nb-accent)]">
+                                #{selectedTicket.readableId || selectedTicket.id.slice(0, 8)}
+                              </span>
+                              <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold bg-[var(--nb-surface)] border border-[var(--nb-ink)] text-[var(--nb-secondary)]">
+                                {selectedTicket.category}
+                              </span>
+                            </div>
+                            <h4 className="nb-headline text-sm truncate">{selectedTicket.subject}</h4>
+                          </div>
+
+                          {/* Status Actions */}
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {selectedTicket.status !== 'in_progress' && selectedTicket.status !== 'resolved' && (
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateDeptTicketStatus(selectedTicket.id, 'in_progress')}
+                                disabled={isUpdatingTicketStatus}
+                                className="nb-btn-ghost text-[9px] font-mono font-bold uppercase py-1 px-2 cursor-pointer"
+                              >
+                                Set In Progress
+                              </button>
+                            )}
+                            {selectedTicket.status !== 'resolved' && (
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateDeptTicketStatus(selectedTicket.id, 'resolved')}
+                                disabled={isUpdatingTicketStatus}
+                                className="nb-btn text-[9px] font-mono font-bold uppercase py-1 px-2.5 cursor-pointer bg-emerald-500 text-white hover:bg-emerald-600"
+                              >
+                                <CheckCircle className="w-3 h-3" />
+                                <span>Resolve</span>
+                              </button>
+                            )}
+                            {selectedTicket.status === 'resolved' && (
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateDeptTicketStatus(selectedTicket.id, 'open')}
+                                disabled={isUpdatingTicketStatus}
+                                className="nb-btn-ghost text-[9px] font-mono font-bold uppercase py-1 px-2 cursor-pointer text-amber-600"
+                              >
+                                Reopen
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Student Details Strip */}
+                        <div className="p-2.5 bg-[var(--nb-surface)] border-b border-[var(--nb-ink)]/15 flex items-center justify-between text-[11px] font-mono text-[var(--nb-secondary)] flex-wrap gap-2">
+                          <div className="flex items-center gap-1.5">
+                            <Users className="w-3 h-3 text-[var(--nb-accent)]" />
+                            <strong className="text-[var(--nb-content)]">{selectedTicket.userName}</strong>
+                            {selectedTicket.userRoll && (
+                              <span className="px-1 py-0.2 rounded bg-[var(--nb-surface-accent)] border border-[var(--nb-ink)]/20 text-[9.5px]">
+                                {selectedTicket.userRoll}
+                              </span>
+                            )}
+                            <span className="text-[10px] truncate max-w-[180px]">{selectedTicket.userEmail}</span>
+                          </div>
+                          <span className="text-[9.5px]">
+                            {new Date(selectedTicket.createdAt).toLocaleString()}
+                          </span>
+                        </div>
+
+                        {/* Query & Replies Thread Body */}
+                        <div className="p-3.5 space-y-3 flex-1 overflow-y-auto max-h-[460px]">
+                          {/* Original Query */}
+                          <div className="p-3 rounded bg-[var(--nb-surface-accent)] border border-[var(--nb-ink)]/25 space-y-1.5">
+                            <div className="flex items-center justify-between text-[9.5px] font-mono text-[var(--nb-secondary)]">
+                              <span className="font-bold uppercase text-[var(--nb-content)]">Student Query:</span>
+                              <span>{new Date(selectedTicket.createdAt).toLocaleDateString()}</span>
+                            </div>
+                            <p className="text-xs text-[var(--nb-content)] leading-relaxed whitespace-pre-wrap font-sans">
+                              {selectedTicket.message}
+                            </p>
+                          </div>
+
+                          {/* Replies Thread */}
+                          <div className="space-y-2 pt-1">
+                            <div className="flex items-center gap-1.5 text-[9.5px] font-mono font-bold uppercase text-[var(--nb-secondary)]">
+                              <MessageCircle className="w-3 h-3" />
+                              <span>Conversation Thread ({selectedTicket.replies?.length || 0})</span>
+                            </div>
+
+                            {(selectedTicket.replies || []).map((rep) => {
+                              const isStaff = rep.senderRole === 'admin' || rep.senderRole === 'president' || rep.senderRole === 'super_admin' || rep.senderRole === 'associate';
+                              return (
+                                <div
+                                  key={rep.replyId}
+                                  className={`p-2.5 rounded border leading-relaxed space-y-1 ${
+                                    isStaff
+                                      ? 'bg-emerald-500/10 border-emerald-500/40 shadow-[1px_1px_0_var(--nb-ink)]'
+                                      : 'bg-[var(--nb-surface-accent)] border-[var(--nb-ink)]/30 ml-3'
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between gap-2 text-[9.5px] font-mono flex-wrap">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className={`px-1 py-0.2 rounded text-[8px] font-mono font-black uppercase ${
+                                        rep.senderRole === 'super_admin'
+                                          ? 'bg-rose-500 text-white'
+                                          : isStaff
+                                          ? 'bg-[var(--nb-accent)] text-white'
+                                          : 'bg-neutral-300 dark:bg-neutral-700 text-[var(--nb-content)]'
+                                      }`}>
+                                        {rep.senderRole === 'super_admin' ? 'Super Admin' : isStaff ? 'Dept Official' : 'Student'}
+                                      </span>
+                                      <span className="font-bold text-[var(--nb-content)]">{rep.senderName}</span>
+                                    </div>
+                                    <span className="text-[var(--nb-secondary)]">
+                                      {new Date(rep.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    </span>
+                                  </div>
+                                  <p className="text-xs text-[var(--nb-content)] whitespace-pre-wrap font-sans">
+                                    {rep.message}
+                                  </p>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Reply Form */}
+                        <form onSubmit={handleSendDeptReply} className="p-3 bg-[var(--nb-surface-accent)] border-t-2 border-[var(--nb-ink)] space-y-2">
+                          <label className="nb-label text-[9.5px] block">
+                            Department Official Response (Visible to student in their Support Box):
+                          </label>
+                          <div className="flex gap-2 items-start">
+                            <textarea
+                              rows={2}
+                              value={ticketReplyText}
+                              onChange={(e) => setTicketReplyText(e.target.value)}
+                              placeholder="Write official response, instructions, or resolution details..."
+                              className="nb-input text-xs resize-none flex-1 leading-relaxed"
+                            />
+                            <div className="flex flex-col gap-1 shrink-0">
+                              <button
+                                type="submit"
+                                disabled={!ticketReplyText.trim() || isSendingTicketReply}
+                                className="nb-btn text-xs py-1.5 px-3 cursor-pointer disabled:opacity-50"
+                              >
+                                <Send className="w-3 h-3" />
+                                <span>{isSendingTicketReply ? 'Sending...' : 'Send'}</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  if (!ticketReplyText.trim()) return;
+                                  await handleSendDeptReply({ preventDefault: () => {} } as any);
+                                  await handleUpdateDeptTicketStatus(selectedTicket.id, 'resolved');
+                                }}
+                                disabled={!ticketReplyText.trim() || isSendingTicketReply}
+                                className="nb-btn-ghost text-[9px] font-mono font-bold uppercase py-1 px-1.5 cursor-pointer bg-emerald-500/15 border border-emerald-500 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500 hover:text-white disabled:opacity-50"
+                              >
+                                Reply &amp; Resolve
+                              </button>
+                            </div>
+                          </div>
+                        </form>
+                      </div>
+                    ) : (
+                      <div 
+                        className="p-12 text-center bg-[var(--nb-surface)] rounded-lg space-y-2"
+                        style={{ border: '2px solid var(--nb-ink)', boxShadow: 'var(--shadow-hard-sm)' }}
+                      >
+                        <MessageSquare className="w-8 h-8 text-[var(--nb-secondary)] mx-auto opacity-40" />
+                        <h4 className="nb-headline text-xs text-[var(--nb-content)]">Select a Ticket</h4>
+                        <p className="text-[11px] text-[var(--nb-secondary)] max-w-sm mx-auto">
+                          Choose any student query from the list to review the conversation and send an official department reply.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                </div>
+              )}
             </div>
           )}
 

@@ -24,7 +24,8 @@ import {
   Eye,
   Search,
   X,
-  Filter
+  Filter,
+  Lightbulb
 } from 'lucide-react';
 import { UserProfile, DepartmentEvent, Announcement, EventRegistration, EventWinner, Tenant, AppBranding } from '../types';
 import { subscribeToEventWinners, deleteEventWinner } from '../firebase';
@@ -583,10 +584,11 @@ export default function DashboardView({
                       )}
                       {winner.projectTitle && (
                         <div
-                          className="text-[11px] font-mono italic truncate px-1.5 py-0.5 rounded"
-                          style={{ background: 'var(--nb-surface-accent)', border: '1px solid var(--nb-divider)', color: 'var(--nb-secondary)' }}
+                          className="text-xs font-mono italic truncate px-2 py-1 rounded flex items-center gap-1.5"
+                          style={{ background: 'var(--nb-surface-accent)', border: '1px solid var(--nb-divider)', color: 'var(--nb-content)' }}
                         >
-                          💡 {winner.projectTitle}
+                          <Lightbulb className="w-3.5 h-3.5 flex-shrink-0 text-amber-500" />
+                          <span className="truncate">{winner.projectTitle}</span>
                         </div>
                       )}
                     </div>

@@ -6,3 +6,6 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Exclude legacy single-tenant directory
+better-cse-aiml-main/

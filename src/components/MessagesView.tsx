@@ -833,10 +833,12 @@ export default function MessagesView({ user, allUsers, initialTargetRoll, onTarg
                 </p>
               </div>
               <button
+                type="button"
                 onClick={() => setShowNewChatModal(false)}
-                className="nb-btn-icon w-8 h-8 rounded cursor-pointer"
+                className="w-8 h-8 rounded-md bg-[var(--nb-surface)] text-[var(--nb-content)] hover:bg-[var(--nb-surface-accent)] flex items-center justify-center border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none cursor-pointer transition-all shrink-0"
+                title="Close"
               >
-                <X className="w-4 h-4" />
+                <X className="w-4 h-4 stroke-[2.5]" />
               </button>
             </div>
 

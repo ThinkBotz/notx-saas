@@ -337,11 +337,12 @@ export default function AnnouncementsView({
                 <p className="nb-label text-[10px] text-[var(--nb-secondary)]">Broadcasting to department feed</p>
               </div>
               <button 
+                type="button"
                 onClick={() => setShowAddForm(false)}
-                className="nb-btn-icon w-8 h-8 rounded cursor-pointer"
+                className="w-8 h-8 rounded-md bg-[var(--nb-surface)] text-[var(--nb-content)] hover:bg-[var(--nb-surface-accent)] flex items-center justify-center border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none cursor-pointer transition-all shrink-0"
                 title="Close"
               >
-                <X className="w-4 h-4" />
+                <X className="w-4 h-4 stroke-[2.5]" />
               </button>
             </div>
 
@@ -436,10 +437,12 @@ export default function AnnouncementsView({
               {activeImage.index + 1} / {activeImage.urls.length}
             </span>
             <button 
+              type="button"
               onClick={() => setActiveImage(null)}
-              className="p-2 rounded bg-white/10 hover:bg-white/20 text-white cursor-pointer"
+              className="w-8 h-8 rounded-md bg-[var(--nb-surface)] text-[var(--nb-content)] hover:bg-[var(--nb-surface-accent)] flex items-center justify-center border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none cursor-pointer transition-all shrink-0"
+              title="Close"
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4 stroke-[2.5]" />
             </button>
           </div>
           

@@ -12,7 +12,7 @@ import {
   HelpCircle,
   Loader2,
   Cpu,
-  MessageSquare, Moon, Sun, RefreshCw
+  MessageSquare, RefreshCw, AlertTriangle
 } from 'lucide-react';
 
 import { onSnapshot, collection, doc, query, where } from 'firebase/firestore';
@@ -31,7 +31,8 @@ import {
   fetchReceivedInvitations,
   getAppConfig,
   seedDatabaseIfEmpty,
-  getTenant
+  getTenant,
+  deleteUserProfile
 } from './firebase';
 import { isSessionExpired, recordUserActivity, clearUserSession } from './utils/auth';
 
@@ -89,8 +90,9 @@ export const OfflineIndicator: React.FC = () => {
   if (isOnline) return null;
 
   return (
-    <div className="nb-offline-bar">
-      ⚠ Offline Mode Active
+    <div className="nb-offline-bar flex items-center justify-center gap-1.5">
+      <AlertTriangle className="w-3.5 h-3.5" />
+      <span>Offline Mode Active</span>
     </div>
   );
 };
@@ -98,7 +100,7 @@ export const OfflineIndicator: React.FC = () => {
 export default function App() {
   const isOnline = useOnlineStatus();
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
-    return (localStorage.getItem('notx_theme') as 'light' | 'dark') || 'dark';
+    return (localStorage.getItem('notx_theme') as 'light' | 'dark') || 'light';
   });
 
   useEffect(() => {
@@ -249,7 +251,7 @@ export default function App() {
   const [showAdminModal, setShowAdminModal] = useState(false);
   const [messageTargetRoll, setMessageTargetRoll] = useState<string | null>(null);
   const [appConfig, setAppConfig] = useState<AppConfig>({ 
-    isChatEnabled: true,
+    isChatEnabled: false,
     supportInfo: DEFAULT_SUPPORT_INFO,
     branding: DEFAULT_BRANDING
   });
@@ -365,12 +367,26 @@ export default function App() {
       snapshot.forEach((docSnap) => {
         allRawUsers.push(docSnap.data() as UserProfile);
       });
-      // Filter to only users belonging to the active tenant
+      // Filter to users belonging to the active tenant (strictly excluding global super admins & admin_master)
       const cleanActiveTid = activeTenantId ? activeTenantId.trim().toLowerCase() : '';
-      const tenantUsers = allRawUsers.filter(u => 
-        cleanActiveTid ? (u.tenantId && u.tenantId.trim().toLowerCase() === cleanActiveTid) : false
-      );
-      setAllUsers(tenantUsers);
+      const tenantUsers = allRawUsers.filter(u => {
+        if (cleanActiveTid && u.tenantId && u.tenantId.trim().toLowerCase() !== cleanActiveTid) return false;
+        if (u.isSuperAdmin || u.uid === 'admin_master') return false;
+        if (u.email && SUPER_ADMIN_EMAILS.some(e => e.toLowerCase() === u.email.trim().toLowerCase())) return false;
+        return true;
+      });
+
+      // Deduplicate placeholder admin from memory if authentic admin exists (non-destructive)
+      const adminUsers = tenantUsers.filter(u => u.role === 'admin');
+      const realAdmin = adminUsers.find(u => !u.uid.startsWith('admin_'));
+      const placeholderAdmin = adminUsers.find(u => u.uid.startsWith('admin_'));
+
+      let finalUsers = tenantUsers;
+      if (realAdmin && placeholderAdmin) {
+        finalUsers = tenantUsers.filter(u => u.uid !== placeholderAdmin.uid);
+      }
+
+      setAllUsers(finalUsers);
 
       if (currentUser) {
         const freshUser = allRawUsers.find(u => u.uid === currentUser.uid);
@@ -645,14 +661,6 @@ export default function App() {
                   <RefreshCw className={`w-4 h-4 ${isDataLoading ? 'animate-spin' : ''}`} style={{ color: isDataLoading ? 'var(--nb-accent)' : undefined }} />
                 </button>
 
-                {/* Theme toggle */}
-                <button
-                  onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-                  className="nb-btn-icon"
-                  aria-label="Toggle Theme"
-                >
-                  {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-                </button>
 
                 {/* Profile */}
                 <button
@@ -668,7 +676,7 @@ export default function App() {
                   </div>
                   <div className="text-left hidden sm:block">
                     <p className="text-xs font-bold text-[var(--nb-content)] leading-tight truncate max-w-[72px]">{currentUser.name.split(' ')[0]}</p>
-                    <span className={`text-[8.5px] font-mono font-bold px-1.5 py-0.5 rounded leading-none uppercase inline-block mt-0.5 ${
+                    <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded leading-none uppercase inline-block mt-0.5 ${
                       currentUser.role === 'admin' ? 'nb-pill-coral' :
                       currentUser.role === 'president' || currentUser.role === 'associate' ? 'nb-pill-purple' :
                       currentUser.role === 'coordinator' ? 'nb-pill-blue' : 'nb-pill-green'
@@ -798,7 +806,7 @@ export default function App() {
               setActiveTab(tabId);
               setSelectedEvent(null);
             }}
-            isChatEnabled={appConfig.isChatEnabled}
+            isChatEnabled={false}
             unreadCount={unreadChatsCount}
             pendingInvitesCount={receivedInvitations.filter(i => i.status === 'Pending').length}
             isOffline={!isOnline}

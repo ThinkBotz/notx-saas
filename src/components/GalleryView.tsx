@@ -312,7 +312,7 @@ export default function GalleryView({ user, albums, refreshData, activeTenantId 
                       e.stopPropagation();
                       setAlbumToDelete(selectedAlbum);
                     }}
-                    className="nb-btn-ghost text-xs !min-h-[38px] px-3 text-rose-600 dark:text-rose-400 cursor-pointer"
+                    className="nb-btn nb-btn-danger text-xs !min-h-[38px] px-3 cursor-pointer"
                     title="Delete Album"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -324,10 +324,10 @@ export default function GalleryView({ user, albums, refreshData, activeTenantId 
               <button 
                 type="button"
                 onClick={() => setSelectedAlbum(null)}
-                className="nb-btn-icon w-9 h-9 rounded cursor-pointer"
+                className="w-8 h-8 rounded-md bg-[var(--nb-surface)] text-[var(--nb-content)] hover:bg-[var(--nb-surface-accent)] flex items-center justify-center border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none cursor-pointer transition-all shrink-0"
                 title="Back to Gallery"
               >
-                <X className="w-4 h-4" />
+                <X className="w-4 h-4 stroke-[2.5]" />
               </button>
             </div>
           </div>
@@ -394,12 +394,11 @@ export default function GalleryView({ user, albums, refreshData, activeTenantId 
                         e.stopPropagation();
                         setPhotoToDeleteIdx(idx);
                       }}
-                      className="absolute top-2 right-2 p-1.5 bg-[var(--nb-ink)] text-[var(--nb-bg)] rounded transition-all cursor-pointer opacity-90 group-hover:opacity-100"
-                      style={{ border: '1px solid var(--nb-ink)' }}
+                      className="absolute top-2 right-2 p-1.5 bg-rose-500 text-white rounded-md transition-all cursor-pointer border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none"
                       title="Delete this photo"
                       aria-label="Delete this photo"
                     >
-                      <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                      <Trash2 className="w-3.5 h-3.5 stroke-[2.5]" />
                     </button>
                   )}
 
@@ -427,7 +426,7 @@ export default function GalleryView({ user, albums, refreshData, activeTenantId 
                   <button 
                     type="button"
                     onClick={() => setPhotoToDeleteIdx(activeImageIdx)}
-                    className="flex items-center gap-1.5 bg-rose-600/30 hover:bg-rose-600 text-rose-300 hover:text-white px-3 py-1.5 rounded border border-rose-500/40 transition-all cursor-pointer text-xs font-bold font-mono uppercase"
+                    className="nb-btn nb-btn-danger text-xs !min-h-[38px] px-3 cursor-pointer"
                     title="Delete Photo"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -437,10 +436,10 @@ export default function GalleryView({ user, albums, refreshData, activeTenantId 
                 <button 
                   type="button"
                   onClick={() => setActiveImageIdx(null)}
-                  className="p-2 rounded bg-white/10 hover:bg-white/20 text-white cursor-pointer"
+                  className="w-8 h-8 rounded-md bg-[var(--nb-surface)] text-[var(--nb-content)] hover:bg-[var(--nb-surface-accent)] flex items-center justify-center border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none cursor-pointer transition-all shrink-0"
                   title="Close Fullscreen"
                 >
-                  <X className="w-5 h-5" />
+                  <X className="w-4 h-4 stroke-[2.5]" />
                 </button>
               </div>
             </div>
@@ -453,10 +452,10 @@ export default function GalleryView({ user, albums, refreshData, activeTenantId 
                     e.stopPropagation();
                     setActiveImageIdx((prev) => prev !== null ? (prev > 0 ? prev - 1 : selectedAlbum.images.length - 1) : null);
                   }}
-                  className="absolute left-3 sm:left-6 p-2.5 sm:p-3 bg-black/70 hover:bg-black text-white rounded border border-white/20 cursor-pointer active:scale-95 z-20"
+                  className="absolute left-3 sm:left-6 w-10 h-10 rounded-md bg-[var(--nb-surface)] text-[var(--nb-content)] flex items-center justify-center border-2 border-[var(--nb-ink)] shadow-[2.5px_2.5px_0_var(--nb-ink)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none hover:bg-[var(--nb-surface-accent)] transition-all cursor-pointer z-20"
                   aria-label="Previous photo"
                 >
-                  <ChevronLeft className="w-6 h-6" />
+                  <ChevronLeft className="w-5 h-5 stroke-[2.5]" />
                 </button>
               )}
 
@@ -473,10 +472,10 @@ export default function GalleryView({ user, albums, refreshData, activeTenantId 
                     e.stopPropagation();
                     setActiveImageIdx((prev) => prev !== null ? (prev < selectedAlbum.images.length - 1 ? prev + 1 : 0) : null);
                   }}
-                  className="absolute right-3 sm:right-6 p-2.5 sm:p-3 bg-black/70 hover:bg-black text-white rounded border border-white/20 cursor-pointer active:scale-95 z-20"
+                  className="absolute right-3 sm:right-6 w-10 h-10 rounded-md bg-[var(--nb-surface)] text-[var(--nb-content)] flex items-center justify-center border-2 border-[var(--nb-ink)] shadow-[2.5px_2.5px_0_var(--nb-ink)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none hover:bg-[var(--nb-surface-accent)] transition-all cursor-pointer z-20"
                   aria-label="Next photo"
                 >
-                  <ChevronRight className="w-6 h-6" />
+                  <ChevronRight className="w-5 h-5 stroke-[2.5]" />
                 </button>
               )}
             </div>
@@ -549,8 +548,7 @@ export default function GalleryView({ user, albums, refreshData, activeTenantId 
                     <button 
                       type="button"
                       onClick={(e) => openEditModal(album, e)}
-                      className="p-1.5 bg-[var(--nb-surface)] text-[var(--nb-content)] hover:bg-[var(--nb-ink)] hover:text-[var(--nb-bg)] rounded transition-all cursor-pointer"
-                      style={{ border: '1.5px solid var(--nb-ink)' }}
+                      className="p-1.5 bg-[var(--nb-surface)] text-[var(--nb-content)] hover:bg-[var(--nb-surface-accent)] rounded-md border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all cursor-pointer"
                       title="Edit Album"
                       aria-label="Edit Album"
                     >
@@ -562,8 +560,7 @@ export default function GalleryView({ user, albums, refreshData, activeTenantId 
                         e.stopPropagation();
                         setAlbumToDelete(album);
                       }}
-                      className="p-1.5 bg-[var(--nb-surface)] text-rose-600 dark:text-rose-400 hover:bg-rose-600 hover:text-white rounded transition-all cursor-pointer"
-                      style={{ border: '1.5px solid var(--nb-ink)' }}
+                      className="p-1.5 bg-rose-500 text-white hover:bg-rose-600 rounded-md border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all cursor-pointer"
                       title="Delete Album"
                       aria-label="Delete Album"
                     >
@@ -659,9 +656,10 @@ export default function GalleryView({ user, albums, refreshData, activeTenantId 
               <button 
                 type="button"
                 onClick={() => setShowAddModal(false)} 
-                className="nb-btn-icon w-8 h-8 rounded cursor-pointer"
+                className="w-8 h-8 rounded-md bg-[var(--nb-surface)] text-[var(--nb-content)] hover:bg-[var(--nb-surface-accent)] flex items-center justify-center border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none cursor-pointer transition-all shrink-0"
+                title="Close"
               >
-                <X className="w-4 h-4" />
+                <X className="w-4 h-4 stroke-[2.5]" />
               </button>
             </div>
 
@@ -833,9 +831,10 @@ export default function GalleryView({ user, albums, refreshData, activeTenantId 
             <button 
               type="button"
               onClick={() => setEditingAlbum(null)} 
-              className="nb-btn-icon w-8 h-8 rounded cursor-pointer"
+              className="w-8 h-8 rounded-md bg-[var(--nb-surface)] text-[var(--nb-content)] hover:bg-[var(--nb-surface-accent)] flex items-center justify-center border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none cursor-pointer transition-all shrink-0"
+              title="Close"
             >
-              <X className="w-4 h-4" />
+              <X className="w-4 h-4 stroke-[2.5]" />
             </button>
           </div>
 

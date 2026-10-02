@@ -175,6 +175,42 @@ export const DEFAULT_SUPPORT_INFO: SupportInfo = {
   urgentHelpText: "For urgent exam hall clearances, project evaluations, or event coordinator permissions, please contact your designated Class Representative (CR) or drop by Block-3 Innovation Lab."
 };
 
+export type TicketCategory = 'General' | 'Academics' | 'Events' | 'Grievance';
+export type TicketStatus = 'open' | 'in_progress' | 'resolved' | 'closed';
+
+export interface TicketReply {
+  replyId: string;
+  senderId: string;
+  senderName: string;
+  senderEmail: string;
+  senderRole: string;
+  message: string;
+  createdAt: string;
+}
+
+export interface SupportTicket {
+  id: string;
+  ticketId: string;
+  readableId?: string;
+  tenantId: string;
+  tenantName?: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  userRoll?: string;
+  userRollNumber?: string;
+  category: TicketCategory;
+  subject: string;
+  message: string;
+  status: TicketStatus;
+  createdAt: string;
+  updatedAt: string;
+  unreadByAdmin: boolean;
+  unreadByUser: boolean;
+  replies: TicketReply[];
+}
+
+
 export interface CertificateTemplate {
   orgName: string;
   departmentName: string;
@@ -286,7 +322,173 @@ export interface AppConfig {
   certificateTemplate?: CertificateTemplate;
   supportInfo?: SupportInfo;
   branding?: AppBranding;
+  platformDevConfig?: PlatformDevConfig;
 }
+
+export interface PlatformBuilder {
+  id: string;
+  name: string;
+  rollNumber: string;
+  role: string;
+  department: string;
+  bio?: string;
+  specialty?: string;
+  badge: string;
+  badgeStyle?: string;
+  badgeColor?: 'amber' | 'cyan' | 'rose' | 'violet' | 'emerald' | 'dark' | string;
+  accentBg?: string;
+  accentColor?: string;
+  profilePic?: string;
+  github?: string;
+  linkedin?: string;
+  email?: string;
+  website?: string;
+  isLead?: boolean;
+}
+
+export interface PlatformDevConfig {
+  sectionTitle?: string;
+  subtitle?: string;
+  badgeText?: string;
+  members: PlatformBuilder[];
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
+export const DEFAULT_PLATFORM_BUILDERS: PlatformBuilder[] = [
+  {
+    id: 'syed_sameer',
+    name: "SYED SAMEER",
+    rollNumber: "23HM1A3354",
+    role: "Lead Full-Stack Architect",
+    department: "CSE (AI & ML) - 3rd Year",
+    specialty: "Initiated the project idea and developed the core full-stack application.",
+    bio: "Initiated the project idea, architected the multi-tenant SaaS platform, real-time database schema, dynamic QR pass scanner, and automated credentials.",
+    badge: "ARCHITECT",
+    badgeStyle: "bg-amber-400 text-neutral-900 font-extrabold shadow-[1.5px_1.5px_0_#000]",
+    badgeColor: "amber",
+    accentBg: "bg-amber-400",
+    accentColor: "text-amber-500",
+    email: "syedsame2244@gmail.com",
+    github: "https://github.com",
+    linkedin: "https://linkedin.com",
+    isLead: true
+  },
+  {
+    id: 'aslam_hussain',
+    name: "S MD ASLAM HUSSAIN",
+    rollNumber: "23HM1A3346",
+    role: "Quality & Systems Engineer",
+    department: "CSE (AI & ML) - 3rd Year",
+    specialty: "Handled data verification, quality testing, and performance optimization.",
+    bio: "Managed data integrity verification, multi-device cross-browser testing, load testing, and database query optimization.",
+    badge: "TEST LEAD",
+    badgeStyle: "bg-rose-400 text-neutral-900 font-extrabold shadow-[1.5px_1.5px_0_#000]",
+    badgeColor: "rose",
+    accentBg: "bg-rose-400",
+    accentColor: "text-rose-500",
+    email: "aslam@aits.edu",
+    github: "https://github.com",
+    linkedin: "https://linkedin.com"
+  },
+  {
+    id: 'syed_rayan',
+    name: "SYED RAYAN",
+    rollNumber: "24HM5A3306",
+    role: "Design & UX Specialist",
+    department: "CSE (AI & ML) - 2nd Year",
+    specialty: "Worked on UI/UX redesigns, design strategy, and website interface improvements.",
+    bio: "Engineered Neobrutalist design tokens, responsive mobile views, accessibility enhancements, and interactive UI micro-animations.",
+    badge: "UI/UX",
+    badgeStyle: "bg-sky-400 text-neutral-900 font-extrabold shadow-[1.5px_1.5px_0_#000]",
+    badgeColor: "cyan",
+    accentBg: "bg-sky-400",
+    accentColor: "text-sky-500",
+    github: "https://github.com",
+    linkedin: "https://linkedin.com"
+  },
+  {
+    id: 'syed_naseer',
+    name: "SYED NASEER",
+    rollNumber: "24HM5A3305",
+    role: "Technical Strategist",
+    department: "CSE (AI & ML) - 2nd Year",
+    specialty: "Contributed to technical planning, implementation strategy, and feature development.",
+    bio: "Led feature requirement specifications, workflow planning, coordinator permission structures, and documentation.",
+    badge: "STRATEGY",
+    badgeStyle: "bg-purple-400 text-neutral-900 font-extrabold shadow-[1.5px_1.5px_0_#000]",
+    badgeColor: "violet",
+    accentBg: "bg-purple-400",
+    accentColor: "text-purple-500",
+    github: "https://github.com",
+    linkedin: "https://linkedin.com"
+  },
+  {
+    id: 'k_bhanu',
+    name: "K BHANU",
+    rollNumber: "24HM5A3302",
+    role: "Frontend Engineer",
+    department: "CSE (AI & ML) - 2nd Year",
+    specialty: "Worked on UI designs, frontend styling, and responsive layout optimization.",
+    bio: "Built reusable component libraries, event registration cards, certificates verification modal, and mobile navigation docks.",
+    badge: "FRONTEND",
+    badgeStyle: "bg-emerald-400 text-neutral-900 font-extrabold shadow-[1.5px_1.5px_0_#000]",
+    badgeColor: "emerald",
+    accentBg: "bg-emerald-400",
+    accentColor: "text-emerald-500",
+    github: "https://github.com",
+    linkedin: "https://linkedin.com"
+  }
+];
+
+export const DEFAULT_PLATFORM_DEV_CONFIG: PlatformDevConfig = {
+  sectionTitle: "Platform Builders & Developers",
+  subtitle: "The student engineering team behind {appName}",
+  badgeText: "DEV TEAM",
+  members: DEFAULT_PLATFORM_BUILDERS
+};
+
+export const DEV_COLOR_PRESETS: Record<string, { badge: string; accentBg: string; accentColor: string }> = {
+  amber: {
+    badge: "bg-amber-400 text-neutral-900 font-extrabold shadow-[1.5px_1.5px_0_#000]",
+    accentBg: "bg-amber-400",
+    accentColor: "text-amber-500"
+  },
+  rose: {
+    badge: "bg-rose-400 text-neutral-900 font-extrabold shadow-[1.5px_1.5px_0_#000]",
+    accentBg: "bg-rose-400",
+    accentColor: "text-rose-500"
+  },
+  cyan: {
+    badge: "bg-sky-400 text-neutral-900 font-extrabold shadow-[1.5px_1.5px_0_#000]",
+    accentBg: "bg-sky-400",
+    accentColor: "text-sky-500"
+  },
+  violet: {
+    badge: "bg-purple-400 text-neutral-900 font-extrabold shadow-[1.5px_1.5px_0_#000]",
+    accentBg: "bg-purple-400",
+    accentColor: "text-purple-500"
+  },
+  emerald: {
+    badge: "bg-emerald-400 text-neutral-900 font-extrabold shadow-[1.5px_1.5px_0_#000]",
+    accentBg: "bg-emerald-400",
+    accentColor: "text-emerald-500"
+  },
+  teal: {
+    badge: "bg-teal-400 text-neutral-900 font-extrabold shadow-[1.5px_1.5px_0_#000]",
+    accentBg: "bg-teal-400",
+    accentColor: "text-teal-500"
+  }
+};
+
+export function isSuperAdmin(user?: UserProfile | null): boolean {
+  if (!user) return false;
+  if (user.isSuperAdmin) return true;
+  if (user.email && SUPER_ADMIN_EMAILS.includes(user.email.toLowerCase())) return true;
+  if (user.uid === 'admin_master' || user.uid === 'user_admin_syed') return true;
+  return false;
+}
+
 
 export interface IssuedCertificate {
   tenantId?: string;
@@ -328,6 +530,65 @@ export interface EventWinner {
   addedAt: string;
   addedBy?: string;
 }
+
+export type AuditAction = 
+  | 'event.create' | 'event.update' | 'event.delete' | 'event.cascade_delete'
+  | 'registration.create' | 'registration.update' | 'registration.delete'
+  | 'user.create' | 'user.update' | 'user.delete' | 'user.role_change' | 'user.password_reset'
+  | 'announcement.create' | 'announcement.update' | 'announcement.delete'
+  | 'album.create' | 'album.update' | 'album.delete'
+  | 'certificate.issue' | 'certificate.revoke' | 'certificate.delete'
+  | 'winner.add' | 'winner.update' | 'winner.delete'
+  | 'tenant.create' | 'tenant.update' | 'tenant.delete' | 'tenant.switch'
+  | 'backup.restore' | 'backup.purge'
+  | 'system.reset' | 'system.config_update'
+  | 'auth.login' | 'auth.logout' | 'auth.unauthorized_attempt';
+
+export interface AuditActor {
+  uid: string;
+  email: string;
+  name: string;
+  role: string;
+  isSuperAdmin?: boolean;
+}
+
+export interface AuditLogEntry {
+  logId: string;
+  timestamp: string;
+  action: AuditAction | string;
+  actor: AuditActor;
+  tenantId: string;
+  entityType: string;
+  entityId?: string;
+  entityName?: string;
+  details: string;
+  metadata?: Record<string, any>;
+  severity: 'info' | 'warning' | 'critical';
+}
+
+export interface DeletedBackup {
+  backupId: string;
+  entityType: 'event' | 'event_cascade' | 'registration' | 'announcement' | 
+              'album' | 'certificate' | 'user' | 'event_winner' | 
+              'chat' | 'association_reset' | string;
+  entityId: string;
+  entityName?: string;
+  originalCollection?: string;
+  tenantId: string;
+  deletedBy: AuditActor;
+  deletedAt: string;
+  originalData: any;
+  cascadeChildren?: {
+    registrations?: EventRegistration[];
+    certificates?: IssuedCertificate[];
+    winners?: EventWinner[];
+    [key: string]: any;
+  };
+  metadata?: Record<string, any>;
+  restoredAt?: string;
+  restoredBy?: string;
+}
+
 
 
 

@@ -24,5 +24,7 @@
     },
     "allowImportingTsExtensions": true,
     "noEmit": true
-  }
+  },
+  "include": ["src", "lib"],
+  "exclude": ["node_modules", "dist", "better-cse-aiml-main"]
 }

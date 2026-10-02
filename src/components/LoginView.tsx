@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { UserProfile, AppBranding, DEFAULT_BRANDING, Tenant, SUPER_ADMIN_EMAILS, DepartmentEvent, EventWinner } from '../types';
 import BrandLogo from './BrandLogo';
+import { CrowdCanvas } from './ui/skiper-ui/skiper39';
 import {
   auth,
   subscribeToTenants,
@@ -34,7 +35,8 @@ import {
   updateUserProfile,
   deleteUserProfile,
   fetchEvents,
-  subscribeToEventWinners
+  subscribeToEventWinners,
+  fetchUsers
 } from '../firebase';
 import { GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword } from 'firebase/auth';
 import { hashPassword, verifyPassword, recordUserActivity } from '../utils/auth';
@@ -73,9 +75,10 @@ export default function LoginView({
   // Desktop showcase states
   const [events, setEvents] = useState<DepartmentEvent[]>([]);
   const [winners, setWinners] = useState<EventWinner[]>([]);
+  const [showcaseUsers, setShowcaseUsers] = useState<UserProfile[]>([]);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
 
-  // Subscribe to real-time events and winners for selected tenant showcase
+  // Subscribe to real-time events, users, and winners for selected tenant showcase
   useEffect(() => {
     let isMounted = true;
     if (selectedTenantId) {
@@ -84,6 +87,12 @@ export default function LoginView({
           if (isMounted) setEvents(evList || []);
         })
         .catch((err) => console.warn('Error fetching showcase events:', err));
+
+      fetchUsers(selectedTenantId)
+        .then((uList) => {
+          if (isMounted && uList) setShowcaseUsers(uList);
+        })
+        .catch((err) => console.warn('Error fetching showcase users:', err));
     }
 
     const unsubWinners = subscribeToEventWinners((winList) => {
@@ -206,11 +215,12 @@ export default function LoginView({
       }
 
       // 3. Find user in memory or live Firestore
-      let foundUser = allUsers.find(u =>
+      const effectiveUsers = showcaseUsers.length > 0 ? showcaseUsers : allUsers;
+      let foundUser = effectiveUsers.find(u =>
         (u.rollNumber?.toLowerCase() === cleanRoll.toLowerCase() ||
           u.email.toLowerCase() === cleanRoll.toLowerCase() ||
           u.email.toLowerCase() === syntheticEmail) &&
-        (u.tenantId === selectedTenantId || u.isSuperAdmin)
+        (!u.tenantId || u.tenantId.toLowerCase() === selectedTenantId.toLowerCase() || u.isSuperAdmin)
       );
 
       if (!foundUser) {
@@ -285,7 +295,7 @@ export default function LoginView({
             googleEmail: googleEmail,
             role: 'admin',
             isSuperAdmin: true,
-            tenantId: selectedTenantId || '',
+            tenantId: '', // Global super admin belongs to platform oversight, not a single department
             profile_pic: result.user.photoURL || "",
             position: "SaaS Super Administrator",
             department: "NOTX Global Administration",
@@ -294,6 +304,10 @@ export default function LoginView({
           };
           await createUserProfile(superAdmin);
           refreshUsers();
+        } else if (superAdmin.tenantId) {
+          // Clear any legacy department tenantId attached to super admin profile
+          superAdmin.tenantId = '';
+          updateUserProfile(superAdmin.uid, { tenantId: '' }).catch(console.warn);
         }
         recordUserActivity();
         onLoginSuccess(superAdmin);
@@ -308,30 +322,18 @@ export default function LoginView({
           return;
         }
 
-        // Clean up any stale admin profiles for this department that don't match this googleEmail
-        const staleAdmins = allUsers.filter(u =>
-          u.tenantId === tenant.tenantId &&
-          u.role === 'admin' &&
-          u.email.toLowerCase() !== googleEmail &&
-          (u.googleEmail?.toLowerCase() || '') !== googleEmail
-        );
-        for (const stale of staleAdmins) {
-          try {
-            await deleteUserProfile(stale.uid);
-          } catch (e) {
-            console.warn('Stale admin cleanup:', e);
-          }
-        }
+        const cleanTid = tenant.tenantId.trim().toLowerCase();
 
         // Check if placeholder admin profile exists for this tenant
         const placeholderAdmin = allUsers.find(u =>
-          u.tenantId === tenant.tenantId &&
-          (u.email.toLowerCase() === googleEmail || u.uid.startsWith(`admin_${tenant.tenantId}`))
+          u.tenantId && u.tenantId.trim().toLowerCase() === cleanTid &&
+          u.uid.startsWith(`admin_${cleanTid}`) &&
+          (u.email?.trim().toLowerCase() === googleEmail.toLowerCase())
         );
 
-        let tenantAdmin = allUsers.find(u => u.uid === result.user.uid && u.tenantId === tenant.tenantId);
+        let tenantAdmin = allUsers.find(u => u.uid === result.user.uid && u.tenantId && u.tenantId.trim().toLowerCase() === cleanTid);
         if (!tenantAdmin) {
-          // If a placeholder existed with a synthetic UID, remove it before writing the authentic Google profile
+          // If a placeholder existed with a synthetic UID, safely remove it before writing the authentic Google profile
           if (placeholderAdmin && placeholderAdmin.uid !== result.user.uid) {
             try {
               await deleteUserProfile(placeholderAdmin.uid);
@@ -398,16 +400,21 @@ export default function LoginView({
     }
   };
 
-  const tenantStudentsCount = allUsers.filter(
-    u => (!u.tenantId || u.tenantId === selectedTenantId) && (!u.role || u.role === 'student')
+  const cleanSelectedTid = selectedTenantId ? selectedTenantId.trim().toLowerCase() : '';
+
+  const effectiveTenantUsers = showcaseUsers.length > 0 ? showcaseUsers : allUsers;
+
+  const tenantMembersCount = effectiveTenantUsers.filter(
+    u => !u.isSuperAdmin && u.uid !== 'admin_master' &&
+         (!cleanSelectedTid || (u.tenantId && u.tenantId.trim().toLowerCase() === cleanSelectedTid))
   ).length;
 
   const tenantEvents = events.filter(
-    e => !e.tenantId || e.tenantId === selectedTenantId
+    e => cleanSelectedTid ? (e.tenantId && e.tenantId.trim().toLowerCase() === cleanSelectedTid) : true
   );
 
   const tenantWinners = winners.filter(
-    w => !w.tenantId || w.tenantId === selectedTenantId
+    w => cleanSelectedTid ? (w.tenantId && w.tenantId.trim().toLowerCase() === cleanSelectedTid) : true
   );
 
   // Reusable Neo-Brutalist Login Form renderer (used inline on mobile, and in modal on desktop)
@@ -697,6 +704,22 @@ export default function LoginView({
                 {selectedTenant?.branding?.loginHeroText || 'Universal department pass verification, live notifications, and digital credentials.'}
               </p>
             </div>
+
+            {/* 3 Department Stat Badges on Mobile */}
+            <div className="grid grid-cols-3 gap-2 w-full pt-1">
+              <div className="p-2.5 rounded-lg border-2 border-[var(--nb-ink)] bg-[var(--nb-surface)] text-[var(--nb-content)] shadow-[2px_2px_0_var(--nb-ink)] flex flex-col items-center justify-center text-center">
+                <span className="font-display text-lg font-black">{tenantMembersCount}</span>
+                <span className="font-mono text-[8px] font-bold text-[var(--nb-secondary)] uppercase tracking-wider">MEMBERS</span>
+              </div>
+              <div className="p-2.5 rounded-lg border-2 border-[var(--nb-ink)] bg-[var(--nb-surface)] text-[var(--nb-content)] shadow-[2px_2px_0_var(--nb-ink)] flex flex-col items-center justify-center text-center">
+                <span className="font-display text-lg font-black">{tenantEvents.length}</span>
+                <span className="font-mono text-[8px] font-bold text-[var(--nb-secondary)] uppercase tracking-wider">EVENTS</span>
+              </div>
+              <div className="p-2.5 rounded-lg border-2 border-[var(--nb-ink)] bg-[var(--nb-surface)] text-[var(--nb-content)] shadow-[2px_2px_0_var(--nb-ink)] flex flex-col items-center justify-center text-center">
+                <span className="font-display text-lg font-black">{tenantWinners.length}</span>
+                <span className="font-mono text-[8px] font-bold text-[var(--nb-secondary)] uppercase tracking-wider">HONOREES</span>
+              </div>
+            </div>
           </div>
 
           {/* Full College Name on Mobile */}
@@ -720,18 +743,23 @@ export default function LoginView({
                   </p>
                 </div>
               </div>
+            </div>
+          </div>
 
-              {/* Mobile Quick Scroll Trigger */}
-              <button
-                type="button"
-                onClick={() => {
-                  document.getElementById('login-form-card')?.scrollIntoView({ behavior: 'smooth' });
-                }}
-                className="nb-btn-ghost w-full font-mono font-bold text-xs uppercase !min-h-[44px] bg-[var(--nb-surface)] shadow-[var(--shadow-hard-sm)] flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                <span>Continue to Sign In</span>
-                <span>↓</span>
-              </button>
+          {/* Mobile Dedicated Animated Crowd Runway */}
+          <div className="relative w-[calc(100%+2.5rem)] -mx-5 -mb-5 mt-5 h-[115px] pointer-events-none overflow-hidden border-t-2 border-[var(--nb-ink)]/20 bg-black/10">
+            <div className="absolute inset-0">
+              <CrowdCanvas
+                src="/images/peeps/all-peeps.png"
+                rows={15}
+                cols={7}
+                className="w-full h-full opacity-60"
+              />
+            </div>
+            {/* Subtle floor guideline */}
+            <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-[var(--nb-ink)]/30" />
+            <div className="absolute bottom-1 right-3 pointer-events-none opacity-45 font-mono text-[8px] font-bold tracking-widest uppercase">
+              CAMPUS LIFE
             </div>
           </div>
         </div>
@@ -818,9 +846,19 @@ export default function LoginView({
 
         {/* ── DESKTOP HERO BANNER & LIVE STATS STRIP ── */}
         <section
-          className="relative px-8 lg:px-14 py-10 lg:py-14 border-b-[2.5px] border-[var(--nb-ink)] flex-shrink-0"
+          className="relative px-8 lg:px-14 pt-16 lg:pt-24 pb-36 lg:pb-44 min-h-[580px] lg:min-h-[640px] xl:min-h-[680px] border-b-[2.5px] border-[var(--nb-ink)] flex-shrink-0 overflow-hidden flex items-start"
           style={{ background: currentTheme.heroBg, color: currentTheme.heroFg }}
         >
+          {/* Animated Skiper-UI Crowd Canvas (bottom strip overlay) */}
+          <div className="absolute bottom-0 left-0 right-0 h-[170px] lg:h-[210px] pointer-events-none z-0 overflow-hidden translate-y-2 opacity-50">
+            <CrowdCanvas
+              src="/images/peeps/all-peeps.png"
+              rows={15}
+              cols={7}
+              className="w-full h-full"
+            />
+          </div>
+
           {/* Dot Matrix Pattern */}
           <div
             className="absolute inset-0 pointer-events-none opacity-10"
@@ -830,7 +868,10 @@ export default function LoginView({
             }}
           />
 
-          <div className="relative z-10 max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-8">
+          {/* Subtle Ground Baseline */}
+          <div className="absolute bottom-0 left-0 right-0 h-[2.5px] bg-[var(--nb-ink)]/25 pointer-events-none" />
+
+          <div className="relative z-10 max-w-7xl w-full mx-auto flex flex-col md:flex-row items-center justify-between gap-8 pt-4 pb-12 lg:pb-16">
 
             {/* Left: Department Titles & Highlights */}
             <div className="flex-1 space-y-3">
@@ -867,13 +908,13 @@ export default function LoginView({
             {/* Right: 3 Neo-Brutalist Department Stat Cards */}
             <div className="grid grid-cols-3 gap-3.5 w-full md:w-auto flex-shrink-0">
 
-              {/* Stat 1: Students */}
+              {/* Stat 1: Members */}
               <div className="p-4 rounded-xl border-2 border-[var(--nb-ink)] bg-[var(--nb-surface)] text-[var(--nb-content)] shadow-[3.5px_3.5px_0_var(--nb-ink)] flex flex-col items-center justify-center text-center min-w-[125px]">
                 <div className="w-8 h-8 rounded-lg border border-[var(--nb-ink)] bg-blue-100 dark:bg-blue-950 flex items-center justify-center mb-1.5 shadow-[1.5px_1.5px_0_var(--nb-ink)]">
                   <Users className="w-4 h-4 text-blue-700 dark:text-blue-300" />
                 </div>
-                <span className="font-display text-2xl font-black">{tenantStudentsCount || allUsers.length}</span>
-                <span className="font-mono text-[9px] font-bold text-[var(--nb-secondary)] uppercase tracking-wider mt-0.5">STUDENTS</span>
+                <span className="font-display text-2xl font-black">{tenantMembersCount}</span>
+                <span className="font-mono text-[9px] font-bold text-[var(--nb-secondary)] uppercase tracking-wider mt-0.5">MEMBERS</span>
               </div>
 
               {/* Stat 2: Events */}
@@ -1100,10 +1141,11 @@ export default function LoginView({
             <button
               type="button"
               onClick={() => setIsLoginModalOpen(false)}
-              className="nb-btn-icon absolute top-4 right-4 w-8 h-8 !min-w-[32px] !min-h-[32px] z-20"
+              className="w-8 h-8 rounded-md bg-[var(--nb-surface)] text-[var(--nb-content)] hover:bg-[var(--nb-surface-accent)] flex items-center justify-center border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none cursor-pointer transition-all absolute top-4 right-4 z-20 shrink-0"
+              title="Close"
               aria-label="Close login dialog"
             >
-              <X className="w-4 h-4" />
+              <X className="w-4 h-4 stroke-[2.5]" />
             </button>
 
             {renderLoginForm(true)}

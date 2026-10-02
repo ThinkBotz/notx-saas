@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Plus, Calendar, MapPin, Clock, Users, X, Check, Award, Download, Tag, FileText, Image as ImageIcon, ChevronLeft, ChevronRight, Sparkles, Layers, RotateCw, Lock, ShieldCheck, Zap, UserMinus, Ticket } from 'lucide-react';
+import { Search, Plus, Calendar, MapPin, Clock, Users, X, Check, Award, Download, Tag, FileText, Image as ImageIcon, ChevronLeft, ChevronRight, Sparkles, Layers, RotateCw, Lock, ShieldCheck, Zap, UserMinus, Ticket, GraduationCap } from 'lucide-react';
 import ImageUploader from './ImageUploader';
 import FlipCard from './FlipCard';
 import HoldButton from './HoldButton';
 import EventTicketModal from './EventTicketModal';
 import { fireConfetti } from '../utils/confetti';
-import { UserProfile, DepartmentEvent, EventRegistration, IssuedCertificate, AppBranding, DEFAULT_BRANDING, Tenant } from '../types';
+import { UserProfile, DepartmentEvent, EventRegistration, IssuedCertificate, AppBranding, DEFAULT_BRANDING, Tenant, SUPER_ADMIN_EMAILS } from '../types';
+
 import { createEvent, createRegistration, updateRegistrationStatus, updateRegistrationTeamMembers, deleteRegistration, deleteCertificate, deleteEvent, updateEvent, subscribeToCertificates, generateBatchCertificatesForEvent } from '../firebase';
 
 interface EventsViewProps {
@@ -474,8 +475,61 @@ export default function EventsView({
     }
   };
 
+  // Management role check (Admins and Super Admins cannot register as event participants)
+  const isManagementRole = (
+    user.role === 'admin' || 
+    Boolean(user.isSuperAdmin) || 
+    SUPER_ADMIN_EMAILS.includes(user.email?.toLowerCase() || '') ||
+    user.uid === 'admin_master' ||
+    user.uid === 'user_admin_syed'
+  );
+
+  // Participant list for currently selected event
+  const eventRegistrations = selectedEvent ? registrations.filter(r => r.eventId === selectedEvent.eventId) : [];
+  const userRegistration = selectedEvent ? registrations.find(r => {
+    if (r.eventId !== selectedEvent.eventId) return false;
+    if (r.studentId === user.uid) return true;
+    if (user.rollNumber && r.rollNumber?.toLowerCase() === user.rollNumber.toLowerCase()) return true;
+    if (user.rollNumber && r.teamMembers) {
+      const isMember = r.teamMembers.some(m => m.rollNumber?.toLowerCase() === user.rollNumber?.toLowerCase() && m.status !== 'Declined');
+      if (isMember) return true;
+    }
+    return false;
+  }) : null;
+  const isUserRegistered = !!userRegistration;
+  const [isWithdrawing, setIsWithdrawing] = useState(false);
+
+  // Capacity & Deadline validations
+  const isCapacityFull = Boolean(selectedEvent?.maxParticipants && selectedEvent.maxParticipants > 0 && eventRegistrations.length >= selectedEvent.maxParticipants);
+  const isDeadlinePassed = (() => {
+    if (!selectedEvent?.registrationDeadline) return false;
+    const deadline = new Date(selectedEvent.registrationDeadline);
+    return !isNaN(deadline.getTime()) && new Date() > deadline;
+  })();
+
   const handleRegister = async () => {
     if (!selectedEvent) return;
+
+    if (isManagementRole) {
+      alert('Administrative and Super Admin accounts are restricted from event participation to preserve audit integrity and accurate attendance records.');
+      return;
+    }
+
+    if (isCapacityFull) {
+      alert(`Registration Closed: This event has reached its maximum capacity of ${selectedEvent.maxParticipants} participants.`);
+      return;
+    }
+
+    if (isDeadlinePassed) {
+      alert(`Registration Closed: The deadline (${new Date(selectedEvent.registrationDeadline).toLocaleDateString()}) for this event has passed.`);
+      return;
+    }
+
+    if (isUserRegistered) {
+      alert('You are already registered for this event.');
+      return;
+    }
+
     setIsRegistering(true);
 
     try {
@@ -529,20 +583,6 @@ export default function EventsView({
     }
   };
 
-  // Participant list for currently selected event
-  const eventRegistrations = selectedEvent ? registrations.filter(r => r.eventId === selectedEvent.eventId) : [];
-  const userRegistration = selectedEvent ? registrations.find(r => {
-    if (r.eventId !== selectedEvent.eventId) return false;
-    if (r.studentId === user.uid) return true;
-    if (user.rollNumber && r.rollNumber?.toLowerCase() === user.rollNumber.toLowerCase()) return true;
-    if (user.rollNumber && r.teamMembers) {
-      const isMember = r.teamMembers.some(m => m.rollNumber?.toLowerCase() === user.rollNumber?.toLowerCase() && m.status !== 'Declined');
-      if (isMember) return true;
-    }
-    return false;
-  }) : null;
-  const isUserRegistered = !!userRegistration;
-  const [isWithdrawing, setIsWithdrawing] = useState(false);
 
   // Check if selected event has already concluded (past date/end time)
   const isSelectedEventCompleted = (() => {
@@ -718,7 +758,7 @@ export default function EventsView({
                 onClick={() => setActiveCategory(cat)}
                 className={`flex-shrink-0 text-xs font-mono font-bold uppercase tracking-wider px-3.5 py-1.5 rounded-md transition-all cursor-pointer ${isSelected
                     ? getSelectedCatClass(cat)
-                    : 'bg-[var(--nb-surface-accent)] text-[var(--nb-secondary)] border-1.5 border-[var(--nb-divider)] hover:border-[var(--nb-ink)] hover:text-[var(--nb-content)]'
+                    : 'bg-[var(--nb-surface)] text-[var(--nb-content)] border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none hover:bg-[var(--nb-surface-accent)]'
                   }`}
               >
                 {cat}
@@ -771,8 +811,8 @@ export default function EventsView({
               <button
                 type="button"
                 onClick={handlePrevMonth}
-                className="w-8 h-8 rounded bg-[var(--nb-surface-accent)] flex items-center justify-center font-bold text-sm cursor-pointer transition-transform active:scale-95"
-                style={{ border: '1.5px solid var(--nb-ink)' }}
+                className="w-8 h-8 rounded-md bg-[var(--nb-surface)] text-[var(--nb-content)] flex items-center justify-center font-bold text-sm cursor-pointer border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none hover:bg-[var(--nb-surface-accent)] transition-all"
+                title="Previous Month"
               >
                 &larr;
               </button>
@@ -789,8 +829,8 @@ export default function EventsView({
               <button
                 type="button"
                 onClick={handleNextMonth}
-                className="w-8 h-8 rounded bg-[var(--nb-surface-accent)] flex items-center justify-center font-bold text-sm cursor-pointer transition-transform active:scale-95"
-                style={{ border: '1.5px solid var(--nb-ink)' }}
+                className="w-8 h-8 rounded-md bg-[var(--nb-surface)] text-[var(--nb-content)] flex items-center justify-center font-bold text-sm cursor-pointer border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none hover:bg-[var(--nb-surface-accent)] transition-all"
+                title="Next Month"
               >
                 &rarr;
               </button>
@@ -1531,7 +1571,32 @@ export default function EventsView({
               {/* REGISTRATION ACTION BUTTONS */}
               {user && (
                 <div className="border-t border-[var(--nb-ink)]/20 pt-3.5 mt-2">
-                  {isUserRegistered ? (
+                  {isManagementRole ? (
+                    <div
+                      className="bg-[var(--nb-surface)] rounded-xl p-4 flex flex-col items-center text-center space-y-2.5 border-2 border-[var(--nb-ink)] shadow-[var(--shadow-hard-sm)]"
+                    >
+                      <div
+                        className="w-10 h-10 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mb-0.5 border-2 border-[var(--nb-ink)]"
+                      >
+                        <ShieldCheck className="w-5 h-5 stroke-[2.5]" />
+                      </div>
+                      <h4 className="nb-headline text-sm font-black uppercase tracking-wider text-[var(--nb-content)]">
+                        Administrative Account Guard
+                      </h4>
+                      <p className="text-xs text-[var(--nb-secondary)] leading-relaxed max-w-md">
+                        Super Administrators and Department Administrators are restricted from event participant registrations to safeguard audit compliance and registration integrity. You can manage participants, attendance, certificates, and winners below.
+                      </p>
+                      <div className="flex items-center gap-2 pt-1">
+                        <span className="nb-tag font-mono text-[9px] font-bold uppercase bg-[var(--nb-surface-accent)] text-[var(--nb-content)]">
+                          Account: {user.isSuperAdmin ? 'Super Admin' : 'Admin'}
+                        </span>
+                        <span className="nb-tag font-mono text-[9px] font-bold uppercase bg-emerald-500/20 text-emerald-700 dark:text-emerald-300">
+                          Enrolled: {eventRegistrations.length}{selectedEvent.maxParticipants ? ` / ${selectedEvent.maxParticipants}` : ''}
+                        </span>
+                      </div>
+                    </div>
+                  ) : isUserRegistered ? (
+
                     userRegistration?.studentId !== user.uid && userRegistration?.teamMembers?.some(m => m.rollNumber?.toLowerCase() === user.rollNumber?.toLowerCase() && (m.status === 'Pending' || !m.status)) ? (
                       <div
                         className="bg-[var(--nb-surface)] rounded-lg p-4 flex flex-col items-center text-center space-y-2"
@@ -1755,7 +1820,7 @@ export default function EventsView({
                                   <button
                                     type="button"
                                     onClick={() => setTeamMembersInput(teamMembersInput.filter((_, i) => i !== idx))}
-                                    className="text-rose-500 font-bold text-[10px] px-2 py-0.5 cursor-pointer hover:underline"
+                                    className="px-2 py-0.5 rounded bg-rose-500 text-white font-mono font-bold text-[10px] uppercase border-1.5 border-[var(--nb-ink)] shadow-[1.5px_1.5px_0_var(--nb-ink)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none cursor-pointer transition-all"
                                   >
                                     Remove
                                   </button>
@@ -1841,21 +1906,43 @@ export default function EventsView({
                         </div>
                       )}
 
-                      <button
-                        onClick={() => {
-                          if (selectedEvent.isTeamBased && !teamName.trim()) {
-                            setRegFeedback('Please enter a Team Name.');
-                            return;
-                          }
-                          handleRegister();
-                        }}
-                        disabled={isRegistering}
-                        className="w-full nb-btn py-3 text-xs font-bold uppercase tracking-wider cursor-pointer"
-                      >
-                        {isRegistering ? (
-                          <span className="w-4 h-4 rounded-full border-2 border-current border-t-transparent animate-spin"></span>
-                        ) : "Submit Registration"}
-                      </button>
+                      {isCapacityFull ? (
+
+                        <div className="bg-[var(--nb-surface)] p-3.5 rounded-lg border-2 border-[var(--nb-ink)] text-center space-y-1">
+                          <p className="text-xs font-bold text-amber-500 uppercase tracking-wider">
+                            ⚠️ Registration Capacity Reached
+                          </p>
+                          <p className="text-[11px] text-[var(--nb-secondary)]">
+                            This event has reached its maximum limit of {selectedEvent.maxParticipants} participants.
+                          </p>
+                        </div>
+                      ) : isDeadlinePassed ? (
+                        <div className="bg-[var(--nb-surface)] p-3.5 rounded-lg border-2 border-[var(--nb-ink)] text-center space-y-1">
+                          <p className="text-xs font-bold text-rose-500 uppercase tracking-wider">
+                            ⏳ Registration Deadline Passed
+                          </p>
+                          <p className="text-[11px] text-[var(--nb-secondary)]">
+                            Registrations closed on {new Date(selectedEvent.registrationDeadline).toLocaleDateString()}.
+                          </p>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (selectedEvent.isTeamBased && !teamName.trim()) {
+                              setRegFeedback('Please enter a Team Name.');
+                              return;
+                            }
+                            handleRegister();
+                          }}
+                          disabled={isRegistering}
+                          className="w-full nb-btn py-3 text-xs font-bold uppercase tracking-wider cursor-pointer"
+                        >
+                          {isRegistering ? (
+                            <span className="w-4 h-4 rounded-full border-2 border-current border-t-transparent animate-spin"></span>
+                          ) : "Submit Registration"}
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1863,8 +1950,11 @@ export default function EventsView({
 
               {/* PARTICIPANTS & ATTENDANCE DASHBOARD */}
               {(user.role === 'admin' ||
+                Boolean(user.isSuperAdmin) ||
+                SUPER_ADMIN_EMAILS.includes(user.email?.toLowerCase() || '') ||
                 (user.role === 'associate' && user.powers?.canViewRegistrations) ||
                 (user.role === 'coordinator' && user.assignedEvents?.includes(selectedEvent.eventId))) && (
+
                   <div className="border-t border-[var(--nb-ink)]/20 pt-4 mt-3 space-y-3">
                     <div className="flex justify-between items-center">
                       <div>
@@ -1962,24 +2052,22 @@ export default function EventsView({
                                 )}
 
                                 {/* Attendance Switches */}
-                                <div className="flex gap-1">
+                                <div className="flex gap-1.5">
                                   <button
                                     onClick={() => handleAttendance(reg.registrationId, reg.status, 'Attended')}
-                                    className={`text-[10px] font-bold px-2 py-1 rounded cursor-pointer transition-colors ${reg.status === 'Attended'
-                                        ? 'bg-[var(--nb-accent)] text-black border border-[var(--nb-ink)]'
-                                        : 'bg-[var(--nb-surface-accent)] text-[var(--nb-secondary)] hover:text-[var(--nb-content)]'
+                                    className={`text-[10px] font-mono font-bold uppercase px-2.5 py-1 rounded cursor-pointer transition-all active:translate-x-0.5 active:translate-y-0.5 ${reg.status === 'Attended'
+                                        ? 'bg-emerald-500 text-white border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)]'
+                                        : 'bg-[var(--nb-surface)] text-[var(--nb-content)] border-2 border-[var(--nb-ink)] shadow-[1.5px_1.5px_0_var(--nb-ink)] hover:bg-[var(--nb-surface-accent)]'
                                       }`}
-                                    style={{ border: '1px solid var(--nb-ink)' }}
                                   >
                                     Present
                                   </button>
                                   <button
                                     onClick={() => handleAttendance(reg.registrationId, reg.status, 'Absent')}
-                                    className={`text-[10px] font-bold px-2 py-1 rounded cursor-pointer transition-colors ${reg.status === 'Absent'
-                                        ? 'bg-rose-500 text-white border border-[var(--nb-ink)]'
-                                        : 'bg-[var(--nb-surface-accent)] text-[var(--nb-secondary)] hover:text-[var(--nb-content)]'
+                                    className={`text-[10px] font-mono font-bold uppercase px-2.5 py-1 rounded cursor-pointer transition-all active:translate-x-0.5 active:translate-y-0.5 ${reg.status === 'Absent'
+                                        ? 'bg-rose-500 text-white border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)]'
+                                        : 'bg-[var(--nb-surface)] text-[var(--nb-content)] border-2 border-[var(--nb-ink)] shadow-[1.5px_1.5px_0_var(--nb-ink)] hover:bg-[var(--nb-surface-accent)]'
                                       }`}
-                                    style={{ border: '1px solid var(--nb-ink)' }}
                                   >
                                     Absent
                                   </button>
@@ -2023,10 +2111,18 @@ export default function EventsView({
                         doneLabel="Deleted"
                         onHold={async () => {
                           try {
-                            await deleteEvent(selectedEvent.eventId);
+                            await deleteEvent(selectedEvent.eventId, {
+
+                              uid: user.uid,
+                              email: user.email,
+                              name: user.name,
+                              role: user.role,
+                              isSuperAdmin: Boolean(user.isSuperAdmin)
+                            });
                             setConfirmDeleteEvent(false);
                             setSelectedEvent(null);
                             refreshEvents();
+
                           } catch (err) {
                             console.error("Failed to delete event", err);
                           }
@@ -2046,249 +2142,349 @@ export default function EventsView({
 
       {/* CREATE / EDIT EVENT FULL OVERLAY FORM */}
       {showAddForm && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-3 sm:p-4 select-none">
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4 select-none">
           <div
-            className="bg-[var(--nb-surface)] text-[var(--nb-content)] rounded-lg w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden"
-            style={{ border: '2px solid var(--nb-ink)', boxShadow: 'var(--shadow-hard-lg)' }}
+            className="bg-[var(--nb-surface)] text-[var(--nb-content)] rounded-xl w-full max-w-2xl max-h-[92vh] sm:max-h-[90vh] flex flex-col overflow-hidden"
+            style={{ border: '2.5px solid var(--nb-ink)', boxShadow: 'var(--shadow-hard-lg)' }}
           >
             {/* Header */}
             <div
-              className="p-3.5 flex justify-between items-center flex-shrink-0 bg-[var(--nb-surface-accent)]"
-              style={{ borderBottom: '2px solid var(--nb-ink)' }}
+              className="p-3.5 sm:p-4 flex justify-between items-center flex-shrink-0 bg-[var(--nb-surface-accent)] border-b-2 border-[var(--nb-ink)]"
             >
-              <h3 className="nb-headline text-base">
-                {editingEventId ? 'Edit Department Event' : 'Create New Department Event'}
-              </h3>
+              <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-amber-300 text-black border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)] flex items-center justify-center shrink-0">
+                  <Calendar className="w-5 h-5 stroke-[2.5]" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="nb-headline text-sm sm:text-base truncate">
+                      {editingEventId ? 'Edit Department Event' : 'Create New Department Event'}
+                    </h3>
+                    <span className="bg-amber-300 text-black border border-[var(--nb-ink)] text-[9px] font-mono font-black px-1.5 py-0.5 rounded shadow-[1px_1px_0_var(--nb-ink)] tracking-wider shrink-0">
+                      HOSTING
+                    </span>
+                  </div>
+                  <p className="text-[9.5px] sm:text-[10px] font-mono font-bold uppercase tracking-wider text-[var(--nb-secondary)] truncate">
+                    SCHEDULE &amp; CONFIGURE WORKSHOP, HACKATHON, OR SEMINAR
+                  </p>
+                </div>
+              </div>
+
               <button
+                type="button"
                 onClick={() => {
                   setShowAddForm(false);
                   setEditingEventId(null);
                 }}
-                className="nb-btn-icon w-8 h-8 rounded cursor-pointer"
+                className="w-8 h-8 rounded-md bg-[var(--nb-surface)] text-[var(--nb-content)] hover:bg-[var(--nb-surface-accent)] flex items-center justify-center border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none cursor-pointer transition-all shrink-0 ml-2"
                 title="Close"
               >
-                <X className="w-4 h-4" />
+                <X className="w-4 h-4 stroke-[2.5]" />
               </button>
             </div>
 
-            {/* Scrollable Form */}
-            <form onSubmit={handleCreateEvent} className="flex-1 overflow-y-auto p-4 space-y-3.5 text-xs">
-              <div>
-                <label className="block text-[10px] font-bold font-mono text-[var(--nb-content)] uppercase tracking-wider mb-1">Event Title *</label>
-                <input
-                  type="text"
-                  required
-                  value={eventTitle}
-                  onChange={(e) => setEventTitle(e.target.value)}
-                  placeholder="e.g. AI Builder Arena Hackathon"
-                  className="nb-input !text-xs !min-h-[38px] !py-2 !px-3"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2.5">
-                <div>
-                  <label className="block text-[10px] font-bold font-mono text-[var(--nb-content)] uppercase tracking-wider mb-1">Category *</label>
-                  <select
-                    value={eventCategory}
-                    onChange={(e) => setEventCategory(e.target.value as any)}
-                    className="nb-input !text-xs !min-h-[38px] !py-2 !px-2.5 cursor-pointer font-bold"
-                  >
-                    <option value="Workshops">Workshops</option>
-                    <option value="Hackathons">Hackathons</option>
-                    <option value="Seminars">Seminars</option>
-                    <option value="Cultural Events">Cultural Events</option>
-                    <option value="Club Meetings">Club Meetings</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold font-mono text-[var(--nb-content)] uppercase tracking-wider mb-1">Venue *</label>
-                  <input
-                    type="text"
-                    required
-                    value={eventVenue}
-                    onChange={(e) => setEventVenue(e.target.value)}
-                    placeholder="e.g. Seminar Hall-1 or AI Lab"
-                    className="nb-input !text-xs !min-h-[38px] !py-2 !px-3"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold font-mono text-[var(--nb-content)] uppercase tracking-wider mb-1">Description *</label>
-                <textarea
-                  required
-                  rows={3}
-                  value={eventDescription}
-                  onChange={(e) => setEventDescription(e.target.value)}
-                  placeholder="Provide details about registration incentives, topics, target participants..."
-                  className="nb-input !text-xs !py-2 !px-3 resize-none leading-relaxed"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2.5">
-                <div>
-                  <label className="block text-[10px] font-bold font-mono text-[var(--nb-content)] uppercase tracking-wider mb-1">Date *</label>
-                  <input
-                    type="date"
-                    required
-                    value={eventDate}
-                    onChange={(e) => setEventDate(e.target.value)}
-                    className="nb-input !text-xs !min-h-[38px] !py-2 !px-2.5 cursor-pointer font-mono font-bold"
-                  />
-                </div>
-                <div>
-                  <div className="flex justify-between items-center mb-1">
-                    <label className="block text-[10px] font-bold font-mono text-[var(--nb-content)] uppercase tracking-wider">Start Time *</label>
-                    {eventStartTime && (
-                      <span className="text-[10px] font-mono font-bold text-[var(--nb-accent)]">
-                        {eventStartTime}
-                      </span>
-                    )}
-                  </div>
-                  <input
-                    type="time"
-                    required
-                    value={toTime24(eventStartTime)}
-                    onChange={(e) => {
-                      const new12 = toTime12(e.target.value);
-                      setEventStartTime(new12);
-                      if (eventEndTime) {
-                        const calculatedDur = calcDurationFromTimes(new12, eventEndTime);
-                        if (calculatedDur) setEventDuration(calculatedDur);
-                      }
-                    }}
-                    className="nb-input !text-xs !min-h-[38px] !py-2 !px-2.5 cursor-pointer font-mono font-bold"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2.5">
-                <div>
-                  <div className="flex justify-between items-center mb-1">
-                    <label className="block text-[10px] font-bold font-mono text-[var(--nb-content)] uppercase tracking-wider">End Time *</label>
-                    {eventEndTime && eventEndTime !== 'N/A' && (
-                      <span className="text-[10px] font-mono font-bold text-[var(--nb-accent)]">
-                        {eventEndTime}
-                      </span>
-                    )}
-                  </div>
-                  <input
-                    type="time"
-                    required
-                    value={toTime24(eventEndTime)}
-                    onChange={(e) => {
-                      const newEnd12 = toTime12(e.target.value);
-                      setEventEndTime(newEnd12);
-                      if (eventStartTime && newEnd12) {
-                        const calculatedDur = calcDurationFromTimes(eventStartTime, newEnd12);
-                        if (calculatedDur) setEventDuration(calculatedDur);
-                      }
-                    }}
-                    className="nb-input !text-xs !min-h-[38px] !py-2 !px-2.5 cursor-pointer font-mono font-bold"
-                  />
-                  {eventDuration && (
-                    <div className="mt-1 flex items-center gap-1.5">
-                      <span className="text-[9px] font-mono font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-1.5 py-0.5 rounded">
-                        Duration: {eventDuration}
-                      </span>
-                    </div>
-                  )}
-                  {/* Quick Preset Duration Chips */}
-                  <div className="flex gap-1.5 mt-1.5 overflow-x-auto pb-0.5 scrollbar-none">
-                    {['+1 Hr', '+2 Hrs', '+3 Hrs', '+6 Hrs'].map((chip) => {
-                      const durString = chip === '+1 Hr' ? '1 Hour' : chip === '+2 Hrs' ? '2 Hours' : chip === '+3 Hrs' ? '3 Hours' : '6 Hours';
-                      return (
-                        <button
-                          key={chip}
-                          type="button"
-                          onClick={() => {
-                            if (eventStartTime) {
-                              const calculatedEnd = calcEndTime(eventStartTime, durString);
-                              if (calculatedEnd) {
-                                setEventEndTime(calculatedEnd);
-                                setEventDuration(durString);
-                              }
-                            }
-                          }}
-                          className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded border transition-all cursor-pointer whitespace-nowrap ${
-                            eventDuration === durString
-                              ? 'nb-pill-yellow text-black border-[var(--nb-ink)] shadow-[1.5px_1.5px_0_var(--nb-ink)]'
-                              : 'bg-[var(--nb-surface-accent)] border-[1.5px] border-[var(--nb-ink)] text-[var(--nb-content)] hover:bg-[var(--nb-surface)]'
-                          }`}
-                        >
-                          {chip}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold font-mono text-[var(--nb-content)] uppercase tracking-wider mb-1">Max Participants</label>
-                  <input
-                    type="number"
-                    value={eventMaxParticipants}
-                    onChange={(e) => setEventMaxParticipants(Number(e.target.value))}
-                    className="nb-input !text-xs !min-h-[38px] !py-2 !px-3 font-mono font-bold"
-                  />
-                </div>
-              </div>
-
-              <div 
-                className="grid grid-cols-2 gap-2.5 bg-[var(--nb-surface)] p-3 rounded-lg"
-                style={{ border: '1.5px solid var(--nb-ink)', boxShadow: 'var(--shadow-hard-sm)' }}
-              >
-                <div className="flex items-center justify-between col-span-2">
-                  <div>
-                    <span className="block text-[10px] font-bold font-mono text-[var(--nb-content)] uppercase tracking-wider">Team-Based Event</span>
-                    <span className="text-[9px] text-[var(--nb-secondary)]">Students register as a team</span>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={eventIsTeamBased}
-                    onChange={(e) => setEventIsTeamBased(e.target.checked)}
-                    className="w-4 h-4 rounded border-[1.5px] border-[var(--nb-ink)] text-[var(--nb-accent)] cursor-pointer"
-                  />
-                </div>
-                {eventIsTeamBased && (
-                  <div className="col-span-2 pt-2 border-t border-[var(--nb-divider)] animate-fade-in">
-                    <label className="block text-[10px] font-bold font-mono text-[var(--nb-content)] uppercase tracking-wider mb-1">Max Team Size</label>
-                    <input
-                      type="number"
-                      min={2}
-                      max={10}
-                      value={eventMaxTeamSize}
-                      onChange={(e) => setEventMaxTeamSize(Number(e.target.value))}
-                      className="nb-input !text-xs !min-h-[38px] !py-2 !px-3 font-mono font-bold"
-                    />
-                  </div>
-                )}
-              </div>
-
-              {/* DYNAMIC COORDINATOR SELECTION (FACULTY & STUDENT DB COORDINATORS) */}
-              <div 
-                className="space-y-3 bg-[var(--nb-surface)] p-3.5 rounded-lg"
-                style={{ border: '1.5px solid var(--nb-ink)', boxShadow: 'var(--shadow-hard-sm)' }}
-              >
-                <div className="flex items-center justify-between border-b border-[var(--nb-divider)] pb-2">
-                  <div className="flex items-center gap-1.5">
-                    <Users className="w-3.5 h-3.5 text-[var(--nb-accent)]" />
-                    <span className="text-[10px] font-bold font-mono text-[var(--nb-content)] uppercase tracking-wider">
-                      Event Coordinators (Dynamic DB Selection)
+            {/* Scrollable Form Content */}
+            <form onSubmit={handleCreateEvent} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              <div className="flex-1 overflow-y-auto p-3 sm:p-4.5 space-y-3.5 sm:space-y-4">
+                
+                {/* 1. BASIC INFORMATION */}
+                <div
+                  className="bg-[var(--nb-surface)] rounded-xl border-2 border-[var(--nb-ink)] shadow-[3px_3px_0_var(--nb-ink)] p-3.5 sm:p-4 space-y-3"
+                >
+                  <div className="flex items-center gap-2 border-b border-[var(--nb-divider)] pb-2">
+                    <FileText className="w-3.5 h-3.5 text-[var(--nb-accent)] stroke-[2.5]" />
+                    <span className="text-[11px] font-black font-mono text-[var(--nb-content)] uppercase tracking-wider">
+                      1. BASIC INFORMATION
                     </span>
                   </div>
-                  <span className="text-[9px] font-mono text-[var(--nb-tertiary)] font-bold">
-                    {allUsers.filter(u => u.role === 'coordinator').length} In DB
-                  </span>
+
+                  <div>
+                    <label className="block text-[10px] font-bold font-mono text-[var(--nb-content)] uppercase tracking-wider mb-1">
+                      Event Title *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={eventTitle}
+                      onChange={(e) => setEventTitle(e.target.value)}
+                      placeholder="e.g. AI Builder Arena Hackathon"
+                      className="nb-input !text-xs !min-h-[38px] !py-2 !px-3 font-semibold"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between items-center mb-1">
+                      <label className="block text-[10px] font-bold font-mono text-[var(--nb-content)] uppercase tracking-wider">
+                        Category *
+                      </label>
+                      <span className="text-[9px] font-mono font-bold text-[var(--nb-secondary)]">
+                        Quick Select
+                      </span>
+                    </div>
+
+                    {/* Quick Select Category Pills */}
+                    <div className="flex flex-wrap gap-1.5 mb-2">
+                      {(['Workshops', 'Hackathons', 'Seminars', 'Cultural Events', 'Club Meetings'] as const).map((cat) => {
+                        const isSelected = eventCategory === cat;
+                        return (
+                          <button
+                            key={cat}
+                            type="button"
+                            onClick={() => setEventCategory(cat)}
+                            className={`text-[9.5px] font-mono font-bold px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                              isSelected
+                                ? 'bg-[var(--nb-blue)] text-white border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)]'
+                                : 'bg-[var(--nb-surface-accent)] text-[var(--nb-content)] hover:bg-[var(--nb-surface)] border-[1.5px] border-[var(--nb-ink)]'
+                            }`}
+                          >
+                            {cat}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <select
+                      value={eventCategory}
+                      onChange={(e) => setEventCategory(e.target.value as any)}
+                      className="nb-input !text-xs !min-h-[38px] !py-2 !px-2.5 cursor-pointer font-bold"
+                    >
+                      <option value="Workshops">Workshops (Hands-on Technical Labs)</option>
+                      <option value="Hackathons">Hackathons (Coding &amp; Innovation)</option>
+                      <option value="Seminars">Seminars (Expert Talks &amp; Keynotes)</option>
+                      <option value="Cultural Events">Cultural Events (Celebrations &amp; Arts)</option>
+                      <option value="Club Meetings">Club Meetings (Internal &amp; Assemblies)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold font-mono text-[var(--nb-content)] uppercase tracking-wider mb-1">
+                      Venue Location *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={eventVenue}
+                      onChange={(e) => setEventVenue(e.target.value)}
+                      placeholder="e.g. Seminar Hall-1 or AI Research Lab"
+                      className="nb-input !text-xs !min-h-[38px] !py-2 !px-3 font-semibold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold font-mono text-[var(--nb-content)] uppercase tracking-wider mb-1">
+                      Event Description *
+                    </label>
+                    <textarea
+                      required
+                      rows={3}
+                      value={eventDescription}
+                      onChange={(e) => setEventDescription(e.target.value)}
+                      placeholder="Provide details about agenda, incentives, topics covered, eligibility..."
+                      className="nb-input !text-xs !py-2 !px-3 resize-none leading-relaxed"
+                    />
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* 2. SCHEDULE, TIMING & CAPACITY */}
+                <div
+                  className="bg-[var(--nb-surface)] rounded-xl border-2 border-[var(--nb-ink)] shadow-[3px_3px_0_var(--nb-ink)] p-3.5 sm:p-4 space-y-3"
+                >
+                  <div className="flex items-center gap-2 border-b border-[var(--nb-divider)] pb-2">
+                    <Clock className="w-3.5 h-3.5 text-[var(--nb-accent)] stroke-[2.5]" />
+                    <span className="text-[11px] font-black font-mono text-[var(--nb-content)] uppercase tracking-wider">
+                      2. SCHEDULE, TIMING &amp; CAPACITY
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-bold font-mono text-[var(--nb-content)] uppercase tracking-wider mb-1">
+                        Event Date *
+                      </label>
+                      <input
+                        type="date"
+                        required
+                        value={eventDate}
+                        onChange={(e) => setEventDate(e.target.value)}
+                        className="nb-input !text-xs !min-h-[38px] !py-2 !px-2.5 cursor-pointer font-mono font-bold w-full"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold font-mono text-[var(--nb-content)] uppercase tracking-wider mb-1">
+                        Max Participant Capacity
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        value={eventMaxParticipants}
+                        onChange={(e) => setEventMaxParticipants(Number(e.target.value))}
+                        className="nb-input !text-xs !min-h-[38px] !py-2 !px-3 font-mono font-bold w-full"
+                        placeholder="100"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="block text-[10px] font-bold font-mono text-[var(--nb-content)] uppercase tracking-wider">
+                          Start Time *
+                        </label>
+                        {eventStartTime && (
+                          <span className="text-[10px] font-mono font-bold text-[var(--nb-accent)]">
+                            {eventStartTime}
+                          </span>
+                        )}
+                      </div>
+                      <input
+                        type="time"
+                        required
+                        value={toTime24(eventStartTime)}
+                        onChange={(e) => {
+                          const new12 = toTime12(e.target.value);
+                          setEventStartTime(new12);
+                          if (eventEndTime) {
+                            const calculatedDur = calcDurationFromTimes(new12, eventEndTime);
+                            if (calculatedDur) setEventDuration(calculatedDur);
+                          }
+                        }}
+                        className="nb-input !text-xs !min-h-[38px] !py-2 !px-2.5 cursor-pointer font-mono font-bold w-full"
+                      />
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="block text-[10px] font-bold font-mono text-[var(--nb-content)] uppercase tracking-wider">
+                          End Time *
+                        </label>
+                        {eventEndTime && eventEndTime !== 'N/A' && (
+                          <span className="text-[10px] font-mono font-bold text-[var(--nb-accent)]">
+                            {eventEndTime}
+                          </span>
+                        )}
+                      </div>
+                      <input
+                        type="time"
+                        required
+                        value={toTime24(eventEndTime)}
+                        onChange={(e) => {
+                          const newEnd12 = toTime12(e.target.value);
+                          setEventEndTime(newEnd12);
+                          if (eventStartTime && newEnd12) {
+                            const calculatedDur = calcDurationFromTimes(eventStartTime, newEnd12);
+                            if (calculatedDur) setEventDuration(calculatedDur);
+                          }
+                        }}
+                        className="nb-input !text-xs !min-h-[38px] !py-2 !px-2.5 cursor-pointer font-mono font-bold w-full"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Presets and duration pill */}
+                  <div className="pt-2 border-t border-[var(--nb-divider)] flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
+                      <span className="text-[9.5px] font-mono font-bold text-[var(--nb-secondary)]">Presets:</span>
+                      {['+1 Hr', '+2 Hrs', '+3 Hrs', '+6 Hrs'].map((chip) => {
+                        const durString = chip === '+1 Hr' ? '1 Hour' : chip === '+2 Hrs' ? '2 Hours' : chip === '+3 Hrs' ? '3 Hours' : '6 Hours';
+                        return (
+                          <button
+                            key={chip}
+                            type="button"
+                            onClick={() => {
+                              if (eventStartTime) {
+                                const calculatedEnd = calcEndTime(eventStartTime, durString);
+                                if (calculatedEnd) {
+                                  setEventEndTime(calculatedEnd);
+                                  setEventDuration(durString);
+                                }
+                              }
+                            }}
+                            className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded border transition-all cursor-pointer whitespace-nowrap active:scale-95 ${
+                              eventDuration === durString
+                                ? 'bg-amber-300 text-black border-[1.5px] border-[var(--nb-ink)] shadow-[1px_1px_0_var(--nb-ink)]'
+                                : 'bg-[var(--nb-surface-accent)] border-[1.5px] border-[var(--nb-ink)] text-[var(--nb-content)] hover:bg-[var(--nb-surface)]'
+                            }`}
+                          >
+                            {chip}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {eventDuration && (
+                      <span className="text-[9.5px] font-mono font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded">
+                        Duration: {eventDuration}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* 3. PARTICIPATION FORMAT */}
+                <div
+                  className="bg-[var(--nb-surface)] rounded-xl border-2 border-[var(--nb-ink)] shadow-[3px_3px_0_var(--nb-ink)] p-3.5 sm:p-4 space-y-3"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-1 rounded-md bg-[var(--nb-surface-accent)] border border-[var(--nb-ink)]">
+                        <Users className="w-3.5 h-3.5 text-[var(--nb-accent)]" />
+                      </div>
+                      <div>
+                        <span className="block text-[11px] font-black font-mono text-[var(--nb-content)] uppercase tracking-wider">
+                          3. PARTICIPATION FORMAT
+                        </span>
+                        <span className="text-[10px] text-[var(--nb-secondary)] font-medium">
+                          Students register as a team or squad
+                        </span>
+                      </div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={eventIsTeamBased}
+                      onChange={(e) => setEventIsTeamBased(e.target.checked)}
+                      className="w-5 h-5 rounded border-2 border-[var(--nb-ink)] text-[var(--nb-accent)] cursor-pointer focus:ring-0 accent-[var(--nb-accent)]"
+                    />
+                  </div>
+                  {eventIsTeamBased && (
+                    <div className="pt-2.5 border-t border-[var(--nb-divider)] animate-fade-in">
+                      <label className="block text-[10px] font-bold font-mono text-[var(--nb-content)] uppercase tracking-wider mb-1">
+                        MAX TEAM SIZE (2 - 10 MEMBERS)
+                      </label>
+                      <input
+                        type="number"
+                        min={2}
+                        max={10}
+                        value={eventMaxTeamSize}
+                        onChange={(e) => setEventMaxTeamSize(Number(e.target.value))}
+                        className="nb-input !text-xs !min-h-[38px] !py-2 !px-3 font-mono font-bold"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* 4. EVENT COORDINATORS */}
+                <div
+                  className="bg-[var(--nb-surface)] rounded-xl border-2 border-[var(--nb-ink)] shadow-[3px_3px_0_var(--nb-ink)] p-3.5 sm:p-4 space-y-3.5"
+                >
+                  <div className="flex items-center justify-between border-b border-[var(--nb-divider)] pb-2">
+                    <div className="flex items-center gap-2">
+                      <Users className="w-3.5 h-3.5 text-[var(--nb-accent)] stroke-[2.5]" />
+                      <span className="text-[11px] font-black font-mono text-[var(--nb-content)] uppercase tracking-wider">
+                        4. EVENT COORDINATORS
+                      </span>
+                    </div>
+                    <span className="text-[9.5px] font-mono text-[var(--nb-secondary)] font-bold px-2 py-0.5 rounded bg-[var(--nb-surface-accent)] border border-[var(--nb-ink)]">
+                      {allUsers.filter(u => u.role === 'coordinator' || u.role === 'associate').length} Coordinators in DB
+                    </span>
+                  </div>
+
                   {/* Faculty Coordinator */}
                   <div className="space-y-1.5">
                     <div className="flex justify-between items-center">
                       <label className="text-[10px] font-bold font-mono text-[var(--nb-content)] uppercase tracking-wider">
                         Faculty Coordinator
                       </label>
-                      <span className="text-[8.5px] text-[var(--nb-tertiary)] font-mono font-bold">Quick Pick</span>
+                      <span className="text-[9px] text-[var(--nb-secondary)] font-mono font-bold">
+                        Quick Pick
+                      </span>
                     </div>
 
                     <input
@@ -2300,20 +2496,22 @@ export default function EventsView({
                     />
 
                     {/* Quick Faculty Picks */}
-                    <div className="flex flex-wrap gap-1 items-center pt-0.5">
-                      <span className="text-[8.5px] text-[var(--nb-tertiary)] font-mono font-bold mr-0.5">DB Leads:</span>
+                    <div className="flex flex-wrap gap-1.5 items-center pt-0.5">
+                      <span className="text-[9px] text-[var(--nb-secondary)] font-mono font-bold mr-0.5">Leads:</span>
                       {allUsers.filter(u => u.role === 'faculty').length > 0 ? (
                         allUsers.filter(u => u.role === 'faculty').map(f => (
                           <button
                             key={f.uid}
                             type="button"
                             onClick={() => selectFacultyCoordinator(f.name)}
-                            className={`text-[9px] px-1.5 py-0.5 rounded border transition-all cursor-pointer font-bold ${eventFaculty.toLowerCase() === f.name.toLowerCase()
-                                ? 'bg-[var(--nb-accent)] text-[var(--nb-accent-fg)] border-[1.5px] border-[var(--nb-ink)] shadow-[1.5px_1.5px_0_var(--nb-ink)]'
-                                : 'bg-[var(--nb-surface-accent)] hover:bg-[var(--nb-surface)] text-[var(--nb-content)] border-[1.5px] border-[var(--nb-ink)]'
-                              }`}
+                            className={`text-[9.5px] px-2 py-0.5 rounded border transition-all cursor-pointer font-bold inline-flex items-center gap-1 ${
+                              eventFaculty.toLowerCase() === f.name.toLowerCase()
+                                ? 'bg-indigo-600/20 text-indigo-900 border-indigo-500/40 shadow-[1.5px_1.5px_0_var(--nb-ink)]'
+                                : 'bg-[var(--nb-surface)] hover:bg-[var(--nb-surface-accent)] text-[var(--nb-content)] border-[1.5px] border-[var(--nb-ink)]'
+                            }`}
                           >
-                            👨‍🏫 {f.name}
+                            <GraduationCap className="w-3 h-3 text-indigo-600" />
+                            <span>{f.name}</span>
                           </button>
                         ))
                       ) : (
@@ -2322,12 +2520,14 @@ export default function EventsView({
                             key={fac}
                             type="button"
                             onClick={() => selectFacultyCoordinator(fac)}
-                            className={`text-[9px] px-1.5 py-0.5 rounded border transition-all cursor-pointer font-bold ${eventFaculty.toLowerCase() === fac.toLowerCase()
-                                ? 'bg-[var(--nb-accent)] text-[var(--nb-accent-fg)] border-[1.5px] border-[var(--nb-ink)] shadow-[1.5px_1.5px_0_var(--nb-ink)]'
-                                : 'bg-[var(--nb-surface-accent)] hover:bg-[var(--nb-surface)] text-[var(--nb-content)] border-[1.5px] border-[var(--nb-ink)]'
-                              }`}
+                            className={`text-[9.5px] px-2 py-0.5 rounded border transition-all cursor-pointer font-bold inline-flex items-center gap-1 ${
+                              eventFaculty.toLowerCase() === fac.toLowerCase()
+                                ? 'bg-indigo-600/20 text-indigo-900 border-indigo-500/40 shadow-[1.5px_1.5px_0_var(--nb-ink)]'
+                                : 'bg-[var(--nb-surface)] hover:bg-[var(--nb-surface-accent)] text-[var(--nb-content)] border-[1.5px] border-[var(--nb-ink)]'
+                            }`}
                           >
-                            👨‍🏫 {fac}
+                            <GraduationCap className="w-3 h-3 text-indigo-600" />
+                            <span>{fac}</span>
                           </button>
                         ))
                       )}
@@ -2335,7 +2535,7 @@ export default function EventsView({
                   </div>
 
                   {/* Student Coordinators */}
-                  <div className="space-y-1.5">
+                  <div className="space-y-1.5 pt-1 border-t border-[var(--nb-divider)]">
                     <div className="flex justify-between items-center">
                       <label className="text-[10px] font-bold font-mono text-[var(--nb-content)] uppercase tracking-wider">
                         Student Coordinators
@@ -2343,7 +2543,7 @@ export default function EventsView({
                       <button
                         type="button"
                         onClick={() => setShowCoordPickerModal(true)}
-                        className="inline-flex items-center gap-1 text-[9.5px] font-bold font-mono text-white bg-[var(--nb-purple)] hover:opacity-90 border-[1.5px] border-[var(--nb-ink)] shadow-[1.5px_1.5px_0_var(--nb-ink)] px-2 py-0.5 rounded transition-all cursor-pointer"
+                        className="inline-flex items-center gap-1 text-[9.5px] font-bold font-mono text-white bg-[var(--nb-purple)] hover:opacity-90 border-[1.5px] border-[var(--nb-ink)] shadow-[1.5px_1.5px_0_var(--nb-ink)] px-2 py-0.5 rounded transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 active:shadow-none"
                       >
                         <Sparkles className="w-2.5 h-2.5 text-white" />
                         <span>Fetch from DB</span>
@@ -2352,13 +2552,13 @@ export default function EventsView({
 
                     {/* Chips for selected student coordinators */}
                     {selectedCoordNames.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mb-1">
+                      <div className="flex flex-wrap gap-1.5 mb-1.5 p-2 rounded-lg bg-[var(--nb-surface-accent)] border border-[var(--nb-ink)]">
                         {selectedCoordNames.map(name => {
                           const matchedUser = allUsers.find(u => u.name.toLowerCase() === name.toLowerCase());
                           return (
                             <span
                               key={name}
-                              className="inline-flex items-center gap-1 bg-[var(--nb-surface-accent)] border-[1.5px] border-[var(--nb-ink)] text-[var(--nb-content)] px-2 py-0.5 rounded text-[10px] font-bold"
+                              className="inline-flex items-center gap-1.5 bg-[var(--nb-surface)] border-[1.5px] border-[var(--nb-ink)] shadow-[1px_1px_0_var(--nb-ink)] text-[var(--nb-content)] px-2 py-0.5 rounded text-[10px] font-bold"
                             >
                               <span>{name}</span>
                               {matchedUser?.rollNumber && (
@@ -2370,7 +2570,7 @@ export default function EventsView({
                                 className="text-red-500 hover:text-red-700 p-0.5 cursor-pointer font-black"
                                 title="Remove coordinator"
                               >
-                                <X className="w-3 h-3" />
+                                <X className="w-3 h-3 stroke-[2.5]" />
                               </button>
                             </span>
                           );
@@ -2387,9 +2587,11 @@ export default function EventsView({
                     />
 
                     {/* Quick DB Coordinator pills */}
-                    <div className="pt-0.5">
-                      <div className="text-[8.5px] text-[var(--nb-tertiary)] font-mono font-bold mb-1">Quick Add DB Coordinators:</div>
-                      <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto pr-1">
+                    <div className="pt-1">
+                      <div className="text-[9px] text-[var(--nb-secondary)] font-mono font-bold mb-1">
+                        Quick Add Coordinators:
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pr-1">
                         {allUsers
                           .filter(u => u.role === 'coordinator' || u.role === 'associate')
                           .map(c => {
@@ -2399,10 +2601,11 @@ export default function EventsView({
                                 key={c.uid}
                                 type="button"
                                 onClick={() => toggleCoordinatorName(c.name)}
-                                className={`inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded border transition-all cursor-pointer font-bold ${isSelected
-                                    ? 'bg-[var(--nb-green)] text-neutral-900 border-[1.5px] border-[var(--nb-ink)] shadow-[1.5px_1.5px_0_var(--nb-ink)]'
-                                    : 'bg-[var(--nb-surface-accent)] hover:bg-[var(--nb-surface)] text-[var(--nb-content)] border-[1.5px] border-[var(--nb-ink)]'
-                                  }`}
+                                className={`inline-flex items-center gap-1 text-[9px] px-2 py-0.5 rounded border transition-all cursor-pointer font-bold ${
+                                  isSelected
+                                    ? 'bg-[var(--nb-green)] text-neutral-900 border-[1.5px] border-[var(--nb-ink)] shadow-[1px_1px_0_var(--nb-ink)]'
+                                    : 'bg-[var(--nb-surface)] hover:bg-[var(--nb-surface-accent)] text-[var(--nb-content)] border-[1.5px] border-[var(--nb-ink)]'
+                                }`}
                               >
                                 <span>{isSelected ? '✓' : '+'}</span>
                                 <span>{c.name}</span>
@@ -2416,104 +2619,163 @@ export default function EventsView({
                     </div>
                   </div>
                 </div>
-              </div>
 
-              <div>
-                <label className="block text-[10px] font-bold font-mono text-[var(--nb-content)] uppercase tracking-wider mb-1">Event Poster / Cover Images</label>
-                <ImageUploader
-                  maxFiles={5}
-                  onUploadSuccess={(urls) => {
-                    setEventImages(urls);
-                    if (urls.length > 0) {
-                      if (!eventPoster) setEventPoster(urls[0]);
-                      const img = new Image();
-                      img.onload = () => {
-                        const orient = img.naturalHeight > img.naturalWidth ? 'portrait' : 'landscape';
-                        setPosterOrientations(prev => ({ ...prev, [urls[0]]: orient }));
-                      };
-                      img.src = urls[0];
-                    }
-                  }}
-                  buttonLabel="Upload Event Photos"
-                />
-              </div>
+                {/* 5. POSTER & VISUALS */}
+                <div
+                  className="bg-[var(--nb-surface)] rounded-xl border-2 border-[var(--nb-ink)] shadow-[3px_3px_0_var(--nb-ink)] p-3.5 sm:p-4 space-y-3"
+                >
+                  <div className="flex items-center gap-2 border-b border-[var(--nb-divider)] pb-2">
+                    <ImageIcon className="w-3.5 h-3.5 text-[var(--nb-accent)] stroke-[2.5]" />
+                    <span className="text-[11px] font-black font-mono text-[var(--nb-content)] uppercase tracking-wider">
+                      5. POSTER &amp; VISUALS
+                    </span>
+                  </div>
 
-              <div className="grid grid-cols-2 gap-2.5">
-                <div>
-                  <label className="block text-[10px] font-bold font-mono text-[var(--nb-content)] uppercase tracking-wider mb-1">Poster Orientation</label>
-                  <select
-                    value={eventPosterOrientation}
-                    onChange={(e) => setEventPosterOrientation(e.target.value as any)}
-                    className="nb-input !text-xs !min-h-[38px] !py-2 !px-2.5 cursor-pointer font-bold"
-                  >
-                    <option value="auto">Auto-detect from image</option>
-                    <option value="portrait">Portrait (Tall)</option>
-                    <option value="landscape">Landscape (Wide)</option>
-                  </select>
+                  <div>
+                    <ImageUploader
+                      maxFiles={5}
+                      onUploadSuccess={(urls) => {
+                        setEventImages(urls);
+                        if (urls.length > 0) {
+                          if (!eventPoster) setEventPoster(urls[0]);
+                          const img = new Image();
+                          img.onload = () => {
+                            const orient = img.naturalHeight > img.naturalWidth ? 'portrait' : 'landscape';
+                            setPosterOrientations(prev => ({ ...prev, [urls[0]]: orient }));
+                          };
+                          img.src = urls[0];
+                        }
+                      }}
+                      buttonLabel="UPLOAD EVENT PHOTOS"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-bold font-mono text-[var(--nb-content)] uppercase tracking-wider mb-1">
+                        Poster Orientation
+                      </label>
+                      <select
+                        value={eventPosterOrientation}
+                        onChange={(e) => setEventPosterOrientation(e.target.value as any)}
+                        className="nb-input !text-xs !min-h-[38px] !py-2 !px-2.5 cursor-pointer font-bold w-full"
+                      >
+                        <option value="auto">Auto-detect from image ratio</option>
+                        <option value="portrait">Portrait (Tall)</option>
+                        <option value="landscape">Landscape (Wide)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold font-mono text-[var(--nb-content)] uppercase tracking-wider mb-1">
+                        Direct Poster URL (Optional)
+                      </label>
+                      <input
+                        type="url"
+                        value={eventPoster}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setEventPoster(val);
+                          if (val) {
+                            const img = new Image();
+                            img.onload = () => {
+                              const orient = img.naturalHeight > img.naturalWidth ? 'portrait' : 'landscape';
+                              setPosterOrientations(prev => ({ ...prev, [val]: orient }));
+                            };
+                            img.src = val;
+                          }
+                        }}
+                        placeholder="https://..."
+                        className="nb-input !text-xs !min-h-[38px] !py-2 !px-3 truncate w-full"
+                      />
+                    </div>
+                  </div>
+
+                  {eventPoster && (
+                    <div className="flex items-center gap-3 p-2 bg-[var(--nb-surface-accent)] border border-[var(--nb-ink)] rounded-lg">
+                      <img
+                        src={eventPoster}
+                        alt="Poster preview"
+                        className="w-14 h-14 object-cover rounded border border-[var(--nb-ink)]"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <span className="text-[10px] font-mono font-bold block truncate">
+                          {eventPoster}
+                        </span>
+                        <span className="text-[9px] text-[var(--nb-secondary)] font-mono">
+                          Current Poster Thumbnail
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setEventPoster('')}
+                        className="text-red-500 hover:text-red-700 text-xs font-bold px-2 py-1 border border-red-500/40 rounded hover:bg-red-500/10 cursor-pointer"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  )}
                 </div>
-                <div>
-                  <label className="block text-[10px] font-bold font-mono text-[var(--nb-content)] uppercase tracking-wider mb-1">Direct Poster URL (Optional)</label>
-                  <input
-                    type="url"
-                    value={eventPoster}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setEventPoster(val);
-                      if (val) {
-                        const img = new Image();
-                        img.onload = () => {
-                          const orient = img.naturalHeight > img.naturalWidth ? 'portrait' : 'landscape';
-                          setPosterOrientations(prev => ({ ...prev, [val]: orient }));
-                        };
-                        img.src = val;
-                      }
-                    }}
-                    placeholder="https://..."
-                    className="nb-input !text-xs !min-h-[38px] !py-2 !px-3 truncate"
-                  />
+
+                {/* 6. GUIDELINES & REQUIREMENTS */}
+                <div
+                  className="bg-[var(--nb-surface)] rounded-xl border-2 border-[var(--nb-ink)] shadow-[3px_3px_0_var(--nb-ink)] p-3.5 sm:p-4 space-y-3"
+                >
+                  <div className="flex items-center gap-2 border-b border-[var(--nb-divider)] pb-2">
+                    <Tag className="w-3.5 h-3.5 text-[var(--nb-accent)] stroke-[2.5]" />
+                    <span className="text-[11px] font-black font-mono text-[var(--nb-content)] uppercase tracking-wider">
+                      6. GUIDELINES &amp; REQUIREMENTS
+                    </span>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold font-mono text-[var(--nb-content)] uppercase tracking-wider mb-1">
+                      Event Rules
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={eventRules}
+                      onChange={(e) => setEventRules(e.target.value)}
+                      placeholder={`1. Open only to registered ${activeTenant?.shortCode || 'department'} students\n2. Max team size 4...`}
+                      className="nb-input !text-xs !py-2 !px-3 resize-none leading-relaxed"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold font-mono text-[var(--nb-content)] uppercase tracking-wider mb-1">
+                      Requirements / Prerequisites
+                    </label>
+                    <input
+                      type="text"
+                      value={eventReqs}
+                      onChange={(e) => setEventReqs(e.target.value)}
+                      placeholder="e.g. Laptops required, GitHub accounts, VS Code"
+                      className="nb-input !text-xs !min-h-[38px] !py-2 !px-3"
+                    />
+                  </div>
                 </div>
+
               </div>
 
-              <div>
-                <label className="block text-[10px] font-bold font-mono text-[var(--nb-content)] uppercase tracking-wider mb-1">Event Rules</label>
-                <textarea
-                  rows={2}
-                  value={eventRules}
-                  onChange={(e) => setEventRules(e.target.value)}
-                  placeholder={`1. Open only to registered ${activeTenant?.shortCode || 'department'} students\n2. Max 4 members...`}
-                  className="nb-input !text-xs !py-2 !px-3 resize-none leading-relaxed"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold font-mono text-[var(--nb-content)] uppercase tracking-wider mb-1">Requirements</label>
-                <input
-                  type="text"
-                  value={eventReqs}
-                  onChange={(e) => setEventReqs(e.target.value)}
-                  placeholder="e.g. Laptops, GitHub ID, etc."
-                  className="nb-input !text-xs !min-h-[38px] !py-2 !px-3"
-                />
-              </div>
-
-              <div className="pt-3 flex gap-2.5 mt-2">
+              {/* DOCKED STICKY FOOTER */}
+              <div
+                className="p-3 sm:p-4 bg-[var(--nb-surface-accent)] border-t-2 border-[var(--nb-ink)] flex items-center justify-end gap-3 flex-shrink-0"
+              >
                 <button
                   type="button"
                   onClick={() => {
                     setShowAddForm(false);
                     setEditingEventId(null);
                   }}
-                  className="flex-1 nb-btn-ghost font-bold text-xs uppercase tracking-wider rounded py-2.5 cursor-pointer"
-                  style={{ border: '1.5px solid var(--nb-ink)' }}
+                  className="nb-btn-ghost font-bold text-xs uppercase tracking-wider rounded-md py-2.5 px-5 cursor-pointer border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all"
                 >
-                  Cancel
+                  CANCEL
                 </button>
                 <button
                   type="submit"
-                  className="flex-[2] nb-btn font-bold text-xs uppercase tracking-wider rounded py-2.5 cursor-pointer"
-                  style={{ border: '2px solid var(--nb-ink)', boxShadow: 'var(--shadow-hard-sm)' }}
+                  className="bg-[var(--nb-blue)] hover:brightness-110 text-white font-bold text-xs uppercase tracking-wider rounded-md py-2.5 px-6 cursor-pointer border-2 border-[var(--nb-ink)] shadow-[3px_3px_0_var(--nb-ink)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all flex items-center gap-2"
                 >
-                  {editingEventId ? 'Save Changes' : 'Publish & Notify'}
+                  <Check className="w-4 h-4 stroke-[3]" />
+                  <span>{editingEventId ? 'SAVE CHANGES' : 'PUBLISH & NOTIFY'}</span>
                 </button>
               </div>
             </form>
@@ -2547,9 +2809,10 @@ export default function EventsView({
               <button
                 type="button"
                 onClick={() => setShowCoordPickerModal(false)}
-                className="nb-btn-icon w-8 h-8 rounded cursor-pointer"
+                className="w-8 h-8 rounded-md bg-[var(--nb-surface)] text-[var(--nb-content)] hover:bg-[var(--nb-surface-accent)] flex items-center justify-center border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none cursor-pointer transition-all shrink-0"
+                title="Close"
               >
-                <X className="w-4 h-4" />
+                <X className="w-4 h-4 stroke-[2.5]" />
               </button>
             </div>
 

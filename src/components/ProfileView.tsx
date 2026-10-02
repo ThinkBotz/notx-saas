@@ -1139,11 +1139,12 @@ export default function ProfileView({
           <div className="w-full max-w-lg flex flex-col justify-between max-h-[92vh] overflow-y-auto space-y-4">
             <div className="flex justify-end">
               <button 
+                type="button"
                 onClick={() => setActiveCertEvent(null)}
-                className="w-9 h-9 rounded bg-[var(--nb-surface)] text-[var(--nb-content)] flex items-center justify-center cursor-pointer transition-transform active:scale-95"
-                style={{ border: '2px solid var(--nb-ink)', boxShadow: 'var(--shadow-hard-sm)' }}
+                className="w-8 h-8 rounded-md bg-[var(--nb-surface)] text-[var(--nb-content)] hover:bg-[var(--nb-surface-accent)] flex items-center justify-center border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none cursor-pointer transition-all shrink-0"
+                title="Close"
               >
-                <X className="w-4 h-4" />
+                <X className="w-4 h-4 stroke-[2.5]" />
               </button>
             </div>
 

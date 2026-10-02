@@ -14,7 +14,8 @@ import {
   where,
   getDocFromServer,
   writeBatch,
-  onSnapshot
+  onSnapshot,
+  limit
 } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 import { 
@@ -36,8 +37,19 @@ import {
   IssuedCertificate,
   EventWinner,
   AppBranding,
-  DEFAULT_BRANDING
+  DEFAULT_BRANDING,
+  PlatformDevConfig,
+  DEFAULT_PLATFORM_DEV_CONFIG,
+  AuditLogEntry,
+  DeletedBackup,
+  AuditActor,
+  AuditAction,
+  SupportTicket,
+  TicketReply,
+  TicketCategory,
+  TicketStatus
 } from './types';
+
 
 const app = initializeApp(firebaseConfig);
 export const db = initializeFirestore(app, {
@@ -150,11 +162,22 @@ export async function createTenant(tenant: Tenant): Promise<void> {
       tenantId: cleanId
     };
     await setDoc(doc(db, 'appSettings', configDocId), cleanUndefined(initialConfig));
+
+    await writeAuditLog({
+      action: 'tenant.create',
+      tenantId: cleanId,
+      entityType: 'tenant',
+      entityId: cleanId,
+      entityName: finalTenant.name,
+      details: `Provisioned new multi-tenant organization "${finalTenant.name}" (${cleanId}) with Admin: ${finalTenant.adminEmail}.`,
+      severity: 'warning'
+    });
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, path);
     throw error;
   }
 }
+
 
 /**
  * Automatically transfers tenant admin ownership:
@@ -239,11 +262,28 @@ export async function updateTenant(tenantId: string, updates: Partial<Tenant>): 
         updates.shortCode || updates.name || prevTenant?.shortCode || prevTenant?.name || cleanId
       );
     }
+
+    await writeAuditLog({
+      action: 'tenant.update',
+      tenantId: cleanId,
+      entityType: 'tenant',
+      entityId: cleanId,
+      entityName: updates.name || prevTenant?.name || cleanId,
+      details: `Updated tenant configuration for "${updates.name || prevTenant?.name || cleanId}".`,
+      metadata: updates,
+      severity: 'warning'
+    });
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, path);
     throw error;
   }
 }
+
+export async function deleteTenant(tenantId: string, actor?: Partial<AuditActor>): Promise<void> {
+  const cleanId = tenantId.trim().toLowerCase();
+  await softDelete('tenants', cleanId, 'tenant', actor, cleanId);
+}
+
 
 export async function findTenantByAdminEmail(email: string): Promise<Tenant | null> {
   const clean = email.trim().toLowerCase();
@@ -555,25 +595,428 @@ function cleanUndefined<T>(obj: T): T {
   return result as T;
 }
 
+// ---------------- AUDIT LOGS & SOFT-DELETE BACKUP SYSTEM ----------------
+
+export async function writeAuditLog(entry: {
+  action: AuditAction | string;
+  actor?: Partial<AuditActor>;
+  tenantId?: string;
+  entityType: string;
+  entityId?: string;
+  entityName?: string;
+  details: string;
+  metadata?: Record<string, any>;
+  severity?: 'info' | 'warning' | 'critical';
+}): Promise<void> {
+  try {
+    const logId = `log_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const curAuth = auth.currentUser;
+    const actor: AuditActor = {
+      uid: entry.actor?.uid || curAuth?.uid || 'system',
+      email: entry.actor?.email || curAuth?.email || 'system@notx.app',
+      name: entry.actor?.name || curAuth?.displayName || (curAuth?.email?.split('@')[0]) || 'System Admin',
+      role: entry.actor?.role || 'admin',
+      isSuperAdmin: entry.actor?.isSuperAdmin ?? (curAuth?.email ? SUPER_ADMIN_EMAILS.includes(curAuth.email.toLowerCase()) : false)
+    };
+
+    let severity = entry.severity;
+    if (!severity) {
+      if (entry.action.includes('delete') || entry.action.includes('reset') || entry.action.includes('purge')) {
+        severity = 'critical';
+      } else if (entry.action.includes('revoke') || entry.action.includes('role') || entry.action.includes('restore') || entry.action.includes('unauthorized')) {
+        severity = 'warning';
+      } else {
+        severity = 'info';
+      }
+    }
+
+    const logDoc: AuditLogEntry = {
+      logId,
+      timestamp: new Date().toISOString(),
+      action: entry.action,
+      actor,
+      tenantId: entry.tenantId || getActiveTenantId(),
+      entityType: entry.entityType,
+      entityId: entry.entityId,
+      entityName: entry.entityName,
+      details: entry.details,
+      metadata: entry.metadata,
+      severity
+    };
+
+    const docRef = doc(db, 'audit_logs', logId);
+    await setDoc(docRef, cleanUndefined(logDoc));
+  } catch (err) {
+    // Non-blocking fire-and-forget
+    console.warn('Silent audit log write error:', err);
+  }
+}
+
+export async function softDelete(
+  collectionName: string,
+  docId: string,
+  entityType: string,
+  actor?: Partial<AuditActor>,
+  tenantId?: string,
+  entityName?: string,
+  cascadeChildren?: Record<string, any>
+): Promise<DeletedBackup | null> {
+  const path = `${collectionName}/${docId}`;
+  try {
+    const docRef = doc(db, collectionName, docId);
+    let originalData: any = null;
+    try {
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        originalData = snap.data();
+      }
+    } catch (readErr) {
+      console.warn(`Could not read document before deletion: ${path}`, readErr);
+    }
+
+    const resolvedTenant = tenantId || originalData?.tenantId || getActiveTenantId();
+    const curAuth = auth.currentUser;
+    const resolvedActor: AuditActor = {
+      uid: actor?.uid || curAuth?.uid || 'system',
+      email: actor?.email || curAuth?.email || 'system@notx.app',
+      name: actor?.name || curAuth?.displayName || (curAuth?.email?.split('@')[0]) || 'System Admin',
+      role: actor?.role || 'admin',
+      isSuperAdmin: actor?.isSuperAdmin ?? (curAuth?.email ? SUPER_ADMIN_EMAILS.includes(curAuth.email.toLowerCase()) : false)
+    };
+
+    const backupId = `bk_${entityType}_${docId}_${Date.now()}`;
+    const resolvedName = entityName || originalData?.title || originalData?.name || originalData?.studentName || originalData?.rollNumber || docId;
+    const backupEntry: DeletedBackup = {
+      backupId,
+      entityType,
+      entityId: docId,
+      entityName: resolvedName,
+      tenantId: resolvedTenant,
+      deletedBy: resolvedActor,
+      deletedAt: new Date().toISOString(),
+      originalData: originalData || { id: docId },
+      ...(cascadeChildren ? { cascadeChildren } : {})
+    };
+
+    // 1. Save backup first
+    try {
+      await setDoc(doc(db, 'deleted_backups', backupId), cleanUndefined(backupEntry));
+    } catch (bErr) {
+      console.error(`Failed to store deleted backup for ${path}:`, bErr);
+    }
+
+    // 2. Now delete from active collection
+    await deleteDoc(docRef);
+
+    // 3. Write audit log
+    await writeAuditLog({
+      action: `${entityType}.delete`,
+      actor: resolvedActor,
+      tenantId: resolvedTenant,
+      entityType,
+      entityId: docId,
+      entityName: resolvedName,
+      details: `Deleted ${entityType} "${resolvedName}" (Soft-deleted and archived in Deleted Vault).`,
+      severity: 'critical'
+    });
+
+    return backupEntry;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+    throw error;
+  }
+}
+
+export async function cascadeDeleteEvent(eventId: string, actor?: Partial<AuditActor>): Promise<void> {
+  const path = `events/${eventId}`;
+  try {
+    const eventRef = doc(db, 'events', eventId);
+    let eventData: any = null;
+    try {
+      const snap = await getDoc(eventRef);
+      if (snap.exists()) eventData = snap.data();
+    } catch (err) {
+      console.warn('Error reading event for cascade delete:', err);
+    }
+
+    // Gather child records
+    const registrations: EventRegistration[] = [];
+    const certificates: IssuedCertificate[] = [];
+    const winners: EventWinner[] = [];
+
+    try {
+      const regSnap = await getDocs(query(collection(db, 'registrations'), where('eventId', '==', eventId)));
+      regSnap.forEach(d => registrations.push(d.data() as EventRegistration));
+    } catch (err) {
+      console.warn('Error querying registrations for cascade delete:', err);
+    }
+
+    try {
+      const certSnap = await getDocs(query(collection(db, 'certificates'), where('eventId', '==', eventId)));
+      certSnap.forEach(d => certificates.push(d.data() as IssuedCertificate));
+    } catch (err) {
+      console.warn('Error querying certificates for cascade delete:', err);
+    }
+
+    try {
+      const winSnap = await getDocs(query(collection(db, 'event_winners'), where('eventId', '==', eventId)));
+      winSnap.forEach(d => winners.push(d.data() as EventWinner));
+    } catch (err) {
+      console.warn('Error querying winners for cascade delete:', err);
+    }
+
+    const curAuth = auth.currentUser;
+    const resolvedActor: AuditActor = {
+      uid: actor?.uid || curAuth?.uid || 'admin',
+      email: actor?.email || curAuth?.email || 'admin@notx.app',
+      name: actor?.name || curAuth?.displayName || (curAuth?.email?.split('@')[0]) || 'Admin',
+      role: actor?.role || 'admin',
+      isSuperAdmin: actor?.isSuperAdmin ?? (curAuth?.email ? SUPER_ADMIN_EMAILS.includes(curAuth.email.toLowerCase()) : false)
+    };
+
+    const resolvedTenant = eventData?.tenantId || getActiveTenantId();
+    const eventTitle = eventData?.title || eventId;
+    const backupId = `bk_cascade_event_${eventId}_${Date.now()}`;
+
+    // 1. Create full cascade backup in deleted_backups
+    const backupEntry: DeletedBackup = {
+      backupId,
+      entityType: 'event_cascade',
+      entityId: eventId,
+      entityName: eventTitle,
+      tenantId: resolvedTenant,
+      deletedBy: resolvedActor,
+      deletedAt: new Date().toISOString(),
+      originalData: eventData || { eventId },
+      cascadeChildren: {
+        registrations,
+        certificates,
+        winners
+      }
+    };
+
+    try {
+      await setDoc(doc(db, 'deleted_backups', backupId), cleanUndefined(backupEntry));
+    } catch (bErr) {
+      console.error('Failed to store event cascade backup in deleted_backups:', bErr);
+    }
+
+    // 2. Cascade delete from active collections (batch operations)
+    const batch = writeBatch(db);
+    batch.delete(eventRef);
+
+    for (const reg of registrations) {
+      if (reg.registrationId) {
+        batch.delete(doc(db, 'registrations', reg.registrationId));
+      }
+    }
+    for (const cert of certificates) {
+      if (cert.certificateId) {
+        batch.delete(doc(db, 'certificates', cert.certificateId));
+      }
+    }
+    for (const win of winners) {
+      if (win.winnerId) {
+        batch.delete(doc(db, 'event_winners', win.winnerId));
+      }
+    }
+
+    await batch.commit();
+
+    // 3. Write comprehensive audit log
+    await writeAuditLog({
+      action: 'event.cascade_delete',
+      actor: resolvedActor,
+      tenantId: resolvedTenant,
+      entityType: 'event',
+      entityId: eventId,
+      entityName: eventTitle,
+      details: `Permanently removed event "${eventTitle}" and cascaded deletion of ${registrations.length} registrations/passes, ${certificates.length} certificates, and ${winners.length} winners. Full backup retained in Deleted Vault.`,
+      metadata: {
+        registrationsCount: registrations.length,
+        certificatesCount: certificates.length,
+        winnersCount: winners.length,
+        backupId
+      },
+      severity: 'critical'
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+    throw error;
+  }
+}
+
+export async function restoreDeletedBackup(backupId: string, actor?: Partial<AuditActor>): Promise<void> {
+  const backupRef = doc(db, 'deleted_backups', backupId);
+  const snap = await getDoc(backupRef);
+  if (!snap.exists()) throw new Error('Backup not found');
+  const backup = snap.data() as DeletedBackup;
+
+  const curAuth = auth.currentUser;
+  const resolvedActor: AuditActor = {
+    uid: actor?.uid || curAuth?.uid || 'superadmin',
+    email: actor?.email || curAuth?.email || 'admin@notx.app',
+    name: actor?.name || curAuth?.displayName || 'Super Admin',
+    role: actor?.role || 'superadmin',
+    isSuperAdmin: true
+  };
+
+  // Restore main doc
+  if (backup.entityType === 'event' || backup.entityType === 'event_cascade') {
+    if (backup.originalData) {
+      await setDoc(doc(db, 'events', backup.entityId), cleanUndefined(backup.originalData));
+    }
+    // Restore cascade children if any
+    if (backup.cascadeChildren?.registrations) {
+      for (const reg of backup.cascadeChildren.registrations) {
+        if (reg.registrationId) {
+          await setDoc(doc(db, 'registrations', reg.registrationId), cleanUndefined(reg));
+        }
+      }
+    }
+    if (backup.cascadeChildren?.certificates) {
+      for (const cert of backup.cascadeChildren.certificates) {
+        if (cert.certificateId) {
+          await setDoc(doc(db, 'certificates', cert.certificateId), cleanUndefined(cert));
+        }
+      }
+    }
+    if (backup.cascadeChildren?.winners) {
+      for (const winner of backup.cascadeChildren.winners) {
+        if (winner.winnerId) {
+          await setDoc(doc(db, 'event_winners', winner.winnerId), cleanUndefined(winner));
+        }
+      }
+    }
+  } else if (backup.entityType === 'registration') {
+    await setDoc(doc(db, 'registrations', backup.entityId), cleanUndefined(backup.originalData));
+  } else if (backup.entityType === 'announcement') {
+    await setDoc(doc(db, 'announcements', backup.entityId), cleanUndefined(backup.originalData));
+  } else if (backup.entityType === 'album') {
+    await setDoc(doc(db, 'albums', backup.entityId), cleanUndefined(backup.originalData));
+  } else if (backup.entityType === 'certificate') {
+    await setDoc(doc(db, 'certificates', backup.entityId), cleanUndefined(backup.originalData));
+  } else if (backup.entityType === 'event_winner') {
+    await setDoc(doc(db, 'event_winners', backup.entityId), cleanUndefined(backup.originalData));
+  } else if (backup.entityType === 'user') {
+    await setDoc(doc(db, 'users', backup.entityId), cleanUndefined(backup.originalData));
+  }
+
+  // Update backup entry with restoration metadata
+  await updateDoc(backupRef, {
+    restoredAt: new Date().toISOString(),
+    restoredBy: resolvedActor.email
+  });
+
+  await writeAuditLog({
+    action: 'backup.restore',
+    actor: resolvedActor,
+    tenantId: backup.tenantId,
+    entityType: backup.entityType,
+    entityId: backup.entityId,
+    entityName: backup.entityName,
+    details: `Restored deleted ${backup.entityType} "${backup.entityName}" back to active database.`,
+    severity: 'warning'
+  });
+}
+
+export async function purgeDeletedBackup(backupId: string, actor?: Partial<AuditActor>): Promise<void> {
+  const backupRef = doc(db, 'deleted_backups', backupId);
+  const snap = await getDoc(backupRef);
+  const backup = snap.exists() ? (snap.data() as DeletedBackup) : null;
+
+  const curAuth = auth.currentUser;
+  const resolvedActor: AuditActor = {
+    uid: actor?.uid || curAuth?.uid || 'superadmin',
+    email: actor?.email || curAuth?.email || 'admin@notx.app',
+    name: actor?.name || curAuth?.displayName || 'Super Admin',
+    role: actor?.role || 'superadmin',
+    isSuperAdmin: true
+  };
+
+  await deleteDoc(backupRef);
+
+  await writeAuditLog({
+    action: 'backup.purge',
+    actor: resolvedActor,
+    tenantId: backup?.tenantId || 'global',
+    entityType: backup?.entityType || 'backup',
+    entityId: backupId,
+    entityName: backup?.entityName || backupId,
+    details: `Permanently purged backup record "${backup?.entityName || backupId}" from Deleted Vault.`,
+    severity: 'critical'
+  });
+}
+
+export function subscribeToAuditLogs(callback: (logs: AuditLogEntry[]) => void, maxCount = 200): () => void {
+  try {
+    const q = query(collection(db, 'audit_logs'), limit(maxCount));
+    return onSnapshot(q, (snap) => {
+      const logs: AuditLogEntry[] = [];
+      snap.forEach(d => logs.push(d.data() as AuditLogEntry));
+      logs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      callback(logs);
+    }, (err) => {
+      console.warn('subscribeToAuditLogs snapshot error:', err);
+    });
+  } catch (err) {
+    console.warn('subscribeToAuditLogs error:', err);
+    return () => {};
+  }
+}
+
+export function subscribeToDeletedBackups(callback: (backups: DeletedBackup[]) => void): () => void {
+  try {
+    const q = query(collection(db, 'deleted_backups'));
+    return onSnapshot(q, (snap) => {
+      const list: DeletedBackup[] = [];
+      snap.forEach(d => list.push(d.data() as DeletedBackup));
+      list.sort((a, b) => new Date(b.deletedAt).getTime() - new Date(a.deletedAt).getTime());
+      callback(list);
+    }, (err) => {
+      console.warn('subscribeToDeletedBackups snapshot error:', err);
+    });
+  } catch (err) {
+    console.warn('subscribeToDeletedBackups error:', err);
+    return () => {};
+  }
+}
+
 // ---------------- DATABASE ACTIONS ----------------
+
 
 // Users
 export async function fetchUsers(tenantId?: string): Promise<UserProfile[]> {
   try {
     const querySnapshot = await getDocs(collection(db, 'users'));
-    const users: UserProfile[] = [];
+    const rawUsers: UserProfile[] = [];
     const cleanTid = tenantId ? tenantId.trim().toLowerCase() : '';
     querySnapshot.forEach((doc) => {
-      const u = doc.data() as UserProfile;
-      if (cleanTid) {
-        if (u.tenantId && u.tenantId.trim().toLowerCase() === cleanTid) {
-          users.push(u);
-        }
-      } else {
-        users.push(u);
-      }
+      rawUsers.push(doc.data() as UserProfile);
     });
-    return users;
+
+    if (!cleanTid) {
+      return rawUsers;
+    }
+
+    // Filter to tenant, strictly excluding global super admins & system admin_master
+    const tenantUsers = rawUsers.filter(u => {
+      if (!u.tenantId || u.tenantId.trim().toLowerCase() !== cleanTid) return false;
+      if (u.isSuperAdmin || u.uid === 'admin_master') return false;
+      if (u.email && SUPER_ADMIN_EMAILS.some(e => e.toLowerCase() === u.email.trim().toLowerCase())) return false;
+      return true;
+    });
+
+    // Deduplicate placeholder admin if authentic admin exists for this tenant
+    const adminUsers = tenantUsers.filter(u => u.role === 'admin');
+    const realAdmin = adminUsers.find(u => !u.uid.startsWith('admin_'));
+    const placeholderAdmin = adminUsers.find(u => u.uid.startsWith('admin_'));
+
+    if (realAdmin && placeholderAdmin) {
+      return tenantUsers.filter(u => u.uid !== placeholderAdmin.uid);
+    }
+
+    return tenantUsers;
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, 'users');
   }
@@ -593,14 +1036,8 @@ export async function fetchUserById(uid: string): Promise<UserProfile | null> {
   }
 }
 
-export async function deleteUserProfile(uid: string) {
-  try {
-    const docRef = doc(db, "users", uid);
-    await deleteDoc(docRef);
-  } catch (error) {
-    console.error("Error deleting user profile: ", error);
-    throw error;
-  }
+export async function deleteUserProfile(uid: string, actor?: Partial<AuditActor>): Promise<void> {
+  await softDelete('users', uid, 'user', actor);
 }
 
 export async function updateUserProfile(uid: string, data: Partial<UserProfile>): Promise<void> {
@@ -762,10 +1199,21 @@ export async function createEvent(event: DepartmentEvent): Promise<void> {
       tenantId: event.tenantId || getActiveTenantId()
     };
     await setDoc(docRef, cleanUndefined(finalEvent));
+
+    await writeAuditLog({
+      action: 'event.create',
+      tenantId: finalEvent.tenantId,
+      entityType: 'event',
+      entityId: finalEvent.eventId,
+      entityName: finalEvent.title,
+      details: `Created new event "${finalEvent.title}" (${finalEvent.category}) on ${finalEvent.date}.`,
+      severity: 'info'
+    });
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, path);
   }
 }
+
 
 // Registrations
 export async function fetchRegistrations(tenantId?: string): Promise<EventRegistration[]> {
@@ -821,6 +1269,16 @@ export async function createRegistration(reg: EventRegistration): Promise<void> 
       tenantId: reg.tenantId || getActiveTenantId()
     };
     await setDoc(docRef, cleanUndefined(finalReg));
+
+    await writeAuditLog({
+      action: 'registration.create',
+      tenantId: finalReg.tenantId,
+      entityType: 'registration',
+      entityId: finalReg.registrationId,
+      entityName: `${finalReg.studentName} (${finalReg.rollNumber})`,
+      details: `Registered for event "${finalReg.eventId}" ${finalReg.isTeam ? `as team "${finalReg.teamName}"` : 'individually'}.`,
+      severity: 'info'
+    });
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, path);
   }
@@ -876,10 +1334,19 @@ export async function updateRegistrationStatus(
       }
     }
     await updateDoc(docRef, updateData);
+
+    await writeAuditLog({
+      action: 'registration.update',
+      entityType: 'registration',
+      entityId: regId,
+      details: `Updated registration ${regId} status to "${status}"${verifiedBy ? ` (verified by ${verifiedBy})` : ''}.`,
+      severity: status === 'Attended' ? 'info' : 'warning'
+    });
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, path);
   }
 }
+
 
 export async function updateRegistrationTeamMembers(regId: string, teamMembers: TeamMember[]): Promise<void> {
   const path = `registrations/${regId}`;
@@ -891,15 +1358,10 @@ export async function updateRegistrationTeamMembers(regId: string, teamMembers: 
   }
 }
 
-export async function deleteRegistration(registrationId: string): Promise<void> {
-  const path = `registrations/${registrationId}`;
-  try {
-    const docRef = doc(db, 'registrations', registrationId);
-    await deleteDoc(docRef);
-  } catch (error) {
-    handleFirestoreError(error, OperationType.DELETE, path);
-  }
+export async function deleteRegistration(registrationId: string, actor?: Partial<AuditActor>): Promise<void> {
+  await softDelete('registrations', registrationId, 'registration', actor);
 }
+
 
 // Gallery
 export async function fetchAlbums(tenantId?: string): Promise<Album[]> {
@@ -927,6 +1389,16 @@ export async function addAlbum(item: Album): Promise<void> {
       tenantId: item.tenantId || getActiveTenantId()
     };
     await setDoc(docRef, cleanUndefined(finalAlbum));
+
+    await writeAuditLog({
+      action: 'album.create',
+      tenantId: finalAlbum.tenantId,
+      entityType: 'album',
+      entityId: finalAlbum.albumId,
+      entityName: finalAlbum.title,
+      details: `Created gallery album "${finalAlbum.title}" (${finalAlbum.images?.length || 0} photos).`,
+      severity: 'info'
+    });
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, path);
   }
@@ -937,20 +1409,24 @@ export async function updateAlbum(albumId: string, updates: Partial<Album>): Pro
   try {
     const docRef = doc(db, 'albums', albumId);
     await updateDoc(docRef, cleanUndefined(updates) as any);
+
+    await writeAuditLog({
+      action: 'album.update',
+      entityType: 'album',
+      entityId: albumId,
+      entityName: updates.title || albumId,
+      details: `Updated gallery album "${updates.title || albumId}".`,
+      severity: 'info'
+    });
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, path);
   }
 }
 
-export async function deleteAlbum(albumId: string): Promise<void> {
-  const path = `albums/${albumId}`;
-  try {
-    const docRef = doc(db, 'albums', albumId);
-    await deleteDoc(docRef);
-  } catch (error) {
-    handleFirestoreError(error, OperationType.DELETE, path);
-  }
+export async function deleteAlbum(albumId: string, actor?: Partial<AuditActor>): Promise<void> {
+  await softDelete('albums', albumId, 'album', actor);
 }
+
 
 // Announcements
 export async function fetchAnnouncements(tenantId?: string): Promise<Announcement[]> {
@@ -978,10 +1454,21 @@ export async function createAnnouncement(announce: Announcement): Promise<void> 
       tenantId: announce.tenantId || getActiveTenantId()
     };
     await setDoc(docRef, cleanUndefined(finalAnnounce));
+
+    await writeAuditLog({
+      action: 'announcement.create',
+      tenantId: finalAnnounce.tenantId,
+      entityType: 'announcement',
+      entityId: finalAnnounce.announcementId,
+      entityName: finalAnnounce.title,
+      details: `Published announcement "${finalAnnounce.title}" by ${finalAnnounce.author}.`,
+      severity: 'info'
+    });
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, path);
   }
 }
+
 // User Invitations & Direct Messaging
 export async function fetchReceivedInvitations(rollNumber: string, tenantId?: string): Promise<UserInvitation[]> {
   try {
@@ -1057,30 +1544,31 @@ export async function updateEvent(event: DepartmentEvent): Promise<void> {
   try {
     const docRef = doc(db, 'events', event.eventId);
     await setDoc(docRef, cleanUndefined(event), { merge: true });
+
+    await writeAuditLog({
+      action: 'event.update',
+      tenantId: event.tenantId,
+      entityType: 'event',
+      entityId: event.eventId,
+      entityName: event.title,
+      details: `Updated details for event "${event.title}".`,
+      severity: 'info'
+    });
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, path);
   }
 }
 
-export async function deleteEvent(eventId: string): Promise<void> {
-  const path = `events/${eventId}`;
-  try {
-    const docRef = doc(db, 'events', eventId);
-    await deleteDoc(docRef);
-  } catch (error) {
-    handleFirestoreError(error, OperationType.DELETE, path);
-  }
+
+export async function deleteEvent(eventId: string, actor?: Partial<AuditActor>): Promise<void> {
+  // Cascades deletion of all child records (passes/registrations, certificates, winners) and backs them up
+  return cascadeDeleteEvent(eventId, actor);
 }
 
-export async function deleteAnnouncement(announcementId: string): Promise<void> {
-  const path = `announcements/${announcementId}`;
-  try {
-    const docRef = doc(db, 'announcements', announcementId);
-    await deleteDoc(docRef);
-  } catch (error) {
-    handleFirestoreError(error, OperationType.DELETE, path);
-  }
+export async function deleteAnnouncement(announcementId: string, actor?: Partial<AuditActor>): Promise<void> {
+  await softDelete('announcements', announcementId, 'announcement', actor);
 }
+
 
 // ---------------- UNIFIED CHATS COLLECTION (REALTIME DATABASE RTDB MODEL) ----------------
 
@@ -1563,8 +2051,49 @@ export async function resetEntireDatabaseForNewAssociation(
     resetTimestamp: new Date().toISOString()
   };
 
+  // Step 0: Pre-reset system backup in Deleted Vault
+  try {
+    onProgress?.('Creating pre-reset system backup in Deleted Vault...', 2);
+    const fullSnapshot = await exportAllDatabaseData(tenantId);
+    const backupId = `bk_reset_${tenantId || 'global'}_${Date.now()}`;
+    await setDoc(doc(db, 'deleted_backups', backupId), cleanUndefined({
+      backupId,
+      entityType: 'association_reset',
+      entityId: backupId,
+      entityName: `Full Association Reset Archive (${tenantId})`,
+      tenantId: tenantId || 'cse-aiml',
+      deletedBy: {
+        uid: currentAdmin.uid,
+        email: currentAdmin.email,
+        name: currentAdmin.name,
+        role: currentAdmin.role
+      },
+      deletedAt: new Date().toISOString(),
+      originalData: fullSnapshot
+    }));
+
+    await writeAuditLog({
+      action: 'system.reset',
+      actor: {
+        uid: currentAdmin.uid,
+        email: currentAdmin.email,
+        name: currentAdmin.name,
+        role: currentAdmin.role
+      },
+      tenantId: tenantId || 'cse-aiml',
+      entityType: 'association_reset',
+      entityId: backupId,
+      entityName: `Database Reset (${tenantId})`,
+      details: `Association reset initiated for tenant ${tenantId}. Archived ${fullSnapshot.meta.totalRecords} records to Deleted Vault.`,
+      severity: 'critical'
+    });
+  } catch (bkErr) {
+    console.warn('Pre-reset archive warning:', bkErr);
+  }
+
   // Step 1: Delete only docs that belong to this tenant
   const collectionsToWipe = [
+
     'events',
     'registrations',
     'certificates',
@@ -1705,8 +2234,20 @@ export async function issueCertificate(certData: Omit<IssuedCertificate, 'issued
   try {
     const certDocRef = doc(db, 'certificates', certId);
     await setDoc(certDocRef, cleanUndefined(fullCert));
+
+    await writeAuditLog({
+      action: 'certificate.issue',
+      tenantId: fullCert.tenantId,
+      entityType: 'certificate',
+      entityId: certId,
+      entityName: `${fullCert.studentName} (${fullCert.rollNumber})`,
+      details: `Issued verified certificate ${certId} for event "${fullCert.eventTitle}" to ${fullCert.studentName}.`,
+      severity: 'info'
+    });
+
     return fullCert;
   } catch (error) {
+
     console.error('Error issuing certificate:', error);
     handleFirestoreError(error, OperationType.CREATE, path);
     throw error;
@@ -1825,16 +2366,10 @@ export async function verifyCertificateById(certificateId: string): Promise<Issu
   }
 }
 
-export async function deleteCertificate(certificateId: string): Promise<void> {
-  const path = `certificates/${certificateId}`;
-  try {
-    await deleteDoc(doc(db, 'certificates', certificateId));
-  } catch (error) {
-    console.error('Error deleting certificate:', error);
-    handleFirestoreError(error, OperationType.DELETE, path);
-    throw error;
-  }
+export async function deleteCertificate(certificateId: string, actor?: Partial<AuditActor>): Promise<void> {
+  await softDelete('certificates', certificateId, 'certificate', actor);
 }
+
 
 export async function syncCertificatesForAttendees(
   events: DepartmentEvent[],
@@ -2061,6 +2596,17 @@ export async function addEventWinner(winnerData: Omit<EventWinner, 'winnerId' | 
       addedAt: winnerData.addedAt || new Date().toISOString()
     };
     await setDoc(doc(db, 'event_winners', winnerId), cleanUndefined(finalWinner));
+
+    await writeAuditLog({
+      action: 'winner.add',
+      tenantId: finalWinner.tenantId,
+      entityType: 'event_winner',
+      entityId: winnerId,
+      entityName: `${finalWinner.studentName} (${finalWinner.position})`,
+      details: `Awarded ${finalWinner.position} to ${finalWinner.studentName} for event "${finalWinner.eventTitle}".`,
+      severity: 'info'
+    });
+
     return winnerId;
   } catch (error) {
     console.error('Error adding event winner:', error);
@@ -2073,6 +2619,14 @@ export async function updateEventWinner(winnerId: string, winnerData: Partial<Ev
   const path = `event_winners/${winnerId}`;
   try {
     await updateDoc(doc(db, 'event_winners', winnerId), cleanUndefined(winnerData));
+
+    await writeAuditLog({
+      action: 'winner.update',
+      entityType: 'event_winner',
+      entityId: winnerId,
+      details: `Updated winner record ${winnerId}.`,
+      severity: 'info'
+    });
   } catch (error) {
     console.error('Error updating event winner:', error);
     handleFirestoreError(error, OperationType.UPDATE, path);
@@ -2080,16 +2634,388 @@ export async function updateEventWinner(winnerId: string, winnerData: Partial<Ev
   }
 }
 
-export async function deleteEventWinner(winnerId: string): Promise<void> {
-  const path = `event_winners/${winnerId}`;
+
+export async function deleteEventWinner(winnerId: string, actor?: Partial<AuditActor>): Promise<void> {
+  await softDelete('event_winners', winnerId, 'event_winner', actor);
+}
+
+
+// ---------------- PLATFORM BUILDERS & DEVELOPERS (SUPER ADMIN GLOBAL) ----------------
+export async function getPlatformDevConfig(): Promise<PlatformDevConfig> {
+  const cached = localStorage.getItem('notx_platform_devs');
+  let fallback: PlatformDevConfig = DEFAULT_PLATFORM_DEV_CONFIG;
+  if (cached) {
+    try {
+      fallback = JSON.parse(cached);
+    } catch (e) {}
+  }
+
   try {
-    await deleteDoc(doc(db, 'event_winners', winnerId));
-  } catch (error) {
-    console.error('Error deleting event winner:', error);
-    handleFirestoreError(error, OperationType.DELETE, path);
-    throw error;
+    const docRef = doc(db, 'platformSettings', 'developers');
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      const data = snap.data() as PlatformDevConfig;
+      if (data && data.members && data.members.length > 0) {
+        localStorage.setItem('notx_platform_devs', JSON.stringify(data));
+        return data;
+      }
+    }
+  } catch (err) {
+    console.warn('Firestore platformDevConfig read note:', err);
+  }
+
+  // Backup read from RTDB
+  try {
+    const rtdbRef = ref(rtdb, 'platformSettings/developers');
+    const rtdbSnap = await get(rtdbRef);
+    if (rtdbSnap.exists()) {
+      const val = rtdbSnap.val() as PlatformDevConfig;
+      if (val && val.members && val.members.length > 0) {
+        localStorage.setItem('notx_platform_devs', JSON.stringify(val));
+        return val;
+      }
+    }
+  } catch (rtdbErr) {
+    console.warn('RTDB platformDevConfig read note:', rtdbErr);
+  }
+
+  return fallback;
+}
+
+export async function updatePlatformDevConfig(config: PlatformDevConfig): Promise<void> {
+  const sanitizedMembers = (config.members || []).map((m, idx) => ({
+    id: m.id || `dev-${idx}`,
+    name: m.name || '',
+    rollNumber: m.rollNumber || '',
+    role: m.role || '',
+    department: m.department || '',
+    bio: m.bio || '',
+    specialty: m.specialty || '',
+    badge: m.badge || 'BUILDER',
+    badgeColor: m.badgeColor || 'amber',
+    badgeStyle: m.badgeStyle || '',
+    accentBg: m.accentBg || '',
+    accentColor: m.accentColor || '',
+    email: m.email || '',
+    linkedin: m.linkedin || '',
+    github: m.github || '',
+    profilePic: m.profilePic || '',
+    order: idx
+  }));
+
+  const cleanConfig: PlatformDevConfig = {
+    sectionTitle: config.sectionTitle || DEFAULT_PLATFORM_DEV_CONFIG.sectionTitle,
+    subtitle: config.subtitle || DEFAULT_PLATFORM_DEV_CONFIG.subtitle,
+    badgeText: config.badgeText || DEFAULT_PLATFORM_DEV_CONFIG.badgeText,
+    members: sanitizedMembers,
+    updatedAt: new Date().toISOString()
+  };
+
+  // 1. Immediate local storage persistence (0ms delay)
+  try {
+    localStorage.setItem('notx_platform_devs', JSON.stringify(cleanConfig));
+  } catch (e) {
+    console.warn('localStorage platform dev save note:', e);
+  }
+
+  // 2. Concurrently execute Firestore and RTDB writes with a safety timeout race
+  const firestoreWrites = async () => {
+    try {
+      await setDoc(doc(db, 'platformSettings', 'developers'), cleanUndefined(cleanConfig));
+    } catch (err) {
+      console.warn('Firestore platformSettings write note:', err);
+    }
+    try {
+      await setDoc(doc(db, 'appSettings', 'platform_developers'), cleanUndefined(cleanConfig));
+    } catch (err) {
+      console.warn('Firestore appSettings platform_developers backup note:', err);
+    }
+  };
+
+  const rtdbWrite = async () => {
+    try {
+      const rtdbRef = ref(rtdb, 'platformSettings/developers');
+      await set(rtdbRef, cleanUndefined(cleanConfig));
+    } catch (rtdbErr) {
+      console.warn('RTDB platformSettings write note:', rtdbErr);
+    }
+  };
+
+  try {
+    await Promise.race([
+      Promise.allSettled([firestoreWrites(), rtdbWrite()]),
+      new Promise(resolve => setTimeout(resolve, 1500))
+    ]);
+
+    await writeAuditLog({
+      action: 'system.config_update',
+      entityType: 'platform_developers',
+      entityId: 'developers',
+      entityName: 'Platform Developers & Credits',
+      details: 'Super Admin updated global platform developers and credit attribution config.',
+      severity: 'warning'
+    });
+  } catch (e) {
+    console.warn('updatePlatformDevConfig race note:', e);
   }
 }
 
 
+export function subscribeToPlatformDevConfig(callback: (config: PlatformDevConfig) => void): () => void {
+  // Initial immediate notification from cache or default
+  const cached = localStorage.getItem('notx_platform_devs');
+  if (cached) {
+    try {
+      callback(JSON.parse(cached));
+    } catch (e) {}
+  } else {
+    callback(DEFAULT_PLATFORM_DEV_CONFIG);
+  }
+
+  const unsubs: (() => void)[] = [];
+
+  // 1. Listen in RTDB for ultra-low-latency real-time updates
+  try {
+    const rtdbRef = ref(rtdb, 'platformSettings/developers');
+    const unsubRtdb = onValue(rtdbRef, (snap) => {
+      if (snap.exists()) {
+        const val = snap.val() as PlatformDevConfig;
+        if (val && val.members && val.members.length > 0) {
+          localStorage.setItem('notx_platform_devs', JSON.stringify(val));
+          callback(val);
+        }
+      }
+    }, (err) => {
+      console.warn('RTDB platformDevConfig subscription note:', err);
+    });
+    unsubs.push(unsubRtdb);
+  } catch (err) {
+    console.warn('Failed setting up RTDB platformDevConfig subscription:', err);
+  }
+
+  // 2. Listen in Firestore as fallback/parallel sync
+  try {
+    const unsubFirestore = onSnapshot(doc(db, 'platformSettings', 'developers'), (snap) => {
+      if (snap.exists()) {
+        const val = snap.data() as PlatformDevConfig;
+        if (val && val.members && val.members.length > 0) {
+          localStorage.setItem('notx_platform_devs', JSON.stringify(val));
+          callback(val);
+        }
+      }
+    }, (err) => {
+      console.warn('Firestore platformDevConfig subscription note:', err);
+    });
+    unsubs.push(unsubFirestore);
+  } catch (err) {
+    console.warn('Failed setting up Firestore platformDevConfig subscription:', err);
+  }
+
+  return () => {
+    unsubs.forEach(unsub => {
+      try { unsub(); } catch (e) {}
+    });
+  };
+}
+
+// ==================== SUPPORT TICKETS & QUERY DESK ====================
+
+export async function createSupportTicket(data: {
+  tenantId: string;
+  tenantName?: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  userRoll?: string;
+  userRollNumber?: string;
+  category: TicketCategory;
+  subject: string;
+  message: string;
+}): Promise<SupportTicket> {
+  const tid = data.tenantId || getActiveTenantId();
+  const readableId = `TKT-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+  const now = new Date().toISOString();
+  const roll = data.userRoll || data.userRollNumber || '';
+  
+  const ticketRef = doc(collection(db, 'support_tickets'));
+  const newTicket: SupportTicket = {
+    id: ticketRef.id,
+    ticketId: readableId,
+    readableId: readableId,
+    tenantId: tid,
+    tenantName: data.tenantName || 'Department',
+    userId: data.userId,
+    userName: data.userName,
+    userEmail: data.userEmail,
+    userRoll: roll,
+    userRollNumber: roll,
+    category: data.category,
+    subject: data.subject,
+    message: data.message,
+    status: 'open',
+    createdAt: now,
+    updatedAt: now,
+    unreadByAdmin: true,
+    unreadByUser: false,
+    replies: []
+  };
+
+  await setDoc(ticketRef, cleanUndefined(newTicket));
+
+  try {
+    await writeAuditLog({
+      action: 'ticket.create' as any,
+      severity: 'info',
+      tenantId: tid,
+      entityType: 'support_ticket',
+      entityId: readableId,
+      entityName: data.subject,
+      details: `Student ${data.userName} (${roll || data.userEmail}) created support ticket #${readableId}: "${data.subject}".`
+    });
+  } catch (err) {
+    console.warn('Audit note for ticket creation:', err);
+  }
+
+  return newTicket;
+}
+
+export function subscribeToUserTickets(userId: string, callback: (tickets: SupportTicket[]) => void): () => void {
+  try {
+    const q = query(
+      collection(db, 'support_tickets'),
+      where('userId', '==', userId)
+    );
+    return onSnapshot(q, (snapshot) => {
+      const tickets: SupportTicket[] = [];
+      snapshot.forEach((d) => {
+        tickets.push({ id: d.id, ...d.data() } as SupportTicket);
+      });
+      tickets.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      callback(tickets);
+    }, (error) => {
+      console.error('Error subscribing to user tickets:', error);
+      callback([]);
+    });
+  } catch (error) {
+    console.error('Error initiating user tickets subscription:', error);
+    callback([]);
+    return () => {};
+  }
+}
+
+export function subscribeToTenantTickets(tenantId: string, callback: (tickets: SupportTicket[]) => void): () => void {
+  try {
+    const q = query(
+      collection(db, 'support_tickets'),
+      where('tenantId', '==', tenantId)
+    );
+    return onSnapshot(q, (snapshot) => {
+      const tickets: SupportTicket[] = [];
+      snapshot.forEach((d) => {
+        tickets.push({ id: d.id, ...d.data() } as SupportTicket);
+      });
+      tickets.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      callback(tickets);
+    }, (error) => {
+      console.error('Error subscribing to tenant tickets:', error);
+      callback([]);
+    });
+  } catch (error) {
+    console.error('Error initiating tenant tickets subscription:', error);
+    callback([]);
+    return () => {};
+  }
+}
+
+export function subscribeToAllTickets(callback: (tickets: SupportTicket[]) => void): () => void {
+  try {
+    const q = collection(db, 'support_tickets');
+    return onSnapshot(q, (snapshot) => {
+      const tickets: SupportTicket[] = [];
+      snapshot.forEach((d) => {
+        tickets.push({ id: d.id, ...d.data() } as SupportTicket);
+      });
+      tickets.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      callback(tickets);
+    }, (error) => {
+      console.error('Error subscribing to all tickets:', error);
+      callback([]);
+    });
+  } catch (error) {
+    console.error('Error initiating all tickets subscription:', error);
+    callback([]);
+    return () => {};
+  }
+}
+
+export async function addTicketReply(
+  ticketId: string, 
+  reply: {
+    senderId: string;
+    senderName: string;
+    senderEmail: string;
+    senderRole: string;
+    message: string;
+  },
+  isStaffSender: boolean
+): Promise<void> {
+  const ticketRef = doc(db, 'support_tickets', ticketId);
+  const snap = await getDoc(ticketRef);
+  if (!snap.exists()) {
+    throw new Error('Ticket not found');
+  }
+
+  const ticket = snap.data() as SupportTicket;
+  const newReply: TicketReply = {
+    replyId: `rep-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    senderId: reply.senderId,
+    senderName: reply.senderName,
+    senderEmail: reply.senderEmail,
+    senderRole: reply.senderRole,
+    message: reply.message,
+    createdAt: new Date().toISOString()
+  };
+
+  const updatedReplies = [...(ticket.replies || []), newReply];
+  const now = new Date().toISOString();
+
+  const updates: Partial<SupportTicket> = {
+    replies: updatedReplies,
+    updatedAt: now,
+    ...(isStaffSender 
+      ? { 
+          unreadByUser: true, 
+          unreadByAdmin: false, 
+          status: ticket.status === 'open' ? 'in_progress' : ticket.status 
+        }
+      : { 
+          unreadByAdmin: true, 
+          unreadByUser: false 
+        })
+  };
+
+  await updateDoc(ticketRef, cleanUndefined(updates));
+}
+
+export async function updateTicketStatus(ticketId: string, status: TicketStatus): Promise<void> {
+  const ticketRef = doc(db, 'support_tickets', ticketId);
+  await updateDoc(ticketRef, {
+    status,
+    updatedAt: new Date().toISOString()
+  });
+}
+
+export async function markTicketRead(ticketId: string, reader: 'admin' | 'user'): Promise<void> {
+  const ticketRef = doc(db, 'support_tickets', ticketId);
+  if (reader === 'admin') {
+    await updateDoc(ticketRef, { unreadByAdmin: false });
+  } else {
+    await updateDoc(ticketRef, { unreadByUser: false });
+  }
+}
+
+export async function deleteSupportTicket(ticketId: string): Promise<void> {
+  const ticketRef = doc(db, 'support_tickets', ticketId);
+  await deleteDoc(ticketRef);
+}
 

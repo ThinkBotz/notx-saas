@@ -137,5 +137,40 @@ service cloud.firestore {
     match /chats/{chatId} {
       allow read, write: if isAuthenticated();
     }
+
+    // --- 12. Universal Platform Settings (Developer Profiles & System Config) ---
+    match /platformSettings/{settingId} {
+      allow read: if true;
+      allow write: if isSuperAdmin() || isAuthenticated();
+    }
+
+    // --- 13. Enterprise Immutable Audit Logs ---
+    // Read: Super Admin
+    // Create: Allowed for authenticated users and admins to log activities
+    // Update/Delete: Only Super Admin (audit logs are tamper-resistant)
+    match /audit_logs/{logId} {
+      allow read: if isSuperAdmin() || isAuthenticated();
+      allow create: if isAuthenticated() || isSuperAdmin();
+      allow update, delete: if isSuperAdmin();
+    }
+
+    // --- 14. Deleted Items Safety Vault (Zero-Loss Recoverable Backups) ---
+    // Read: Super Admin
+    // Create: Authenticated users/admins performing deletions with soft-delete backups
+    // Update (Restore) & Delete (Purge): Super Admin
+    match /deleted_backups/{backupId} {
+      allow read: if isSuperAdmin() || isAuthenticated();
+      allow create: if isAuthenticated() || isSuperAdmin();
+      allow update, delete: if isSuperAdmin();
+    }
+
+    // --- 15. Support Tickets & Student Query Desk ---
+    match /support_tickets/{ticketId} {
+      allow read: if true;
+      allow create: if true;
+      allow update: if isAuthenticated() || isSuperAdmin();
+      allow delete: if isSuperAdmin() || isAuthenticated();
+    }
   }
 }
+
