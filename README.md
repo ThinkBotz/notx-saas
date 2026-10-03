@@ -42,7 +42,7 @@
 
 ## ☕ PROLOGUE: WHY DOES THIS EXIST?
 
-> *"It is 9:02 AM. A college workshop has 180 students packed into the seminar hall. Two sweat-drenched coordinators are passing around a single ballpoint pen and a crushed sheet of A4 ruled paper. By 9:45 AM, three different people named 'Rahul' have signed for five other Rahuls who are currently fast asleep in the canteen."*
+> *"It is 9:02 AM. A college workshop has 180 students packed into the seminar hall. Two coordinators are passing around a single ballpoint pen and a crushed sheet of A4 ruled paper. By 9:45 AM, three different people named 'Rahul' have signed for five other Rahuls who are currently fast asleep in the canteen."*
 
 **Enter NotX Connect.**  
 Built out of sheer exhaustion with soggy paper passes, fake certificates edited in Canva with misspelled principal signatures, and chaotic Google Sheets with 34 conflicting edit histories.
@@ -55,195 +55,212 @@ NotX Connect turns college departments and student associations into ultra-slick
 
 ---
 
-## 🕹️ NOTX ARCADE: INTERACTIVE TERMINAL MINI-GAMES
+## 🕹️ INTERACTIVE COMPONENTS SHOWCASE (TRY THE APP COMPONENTS)
 
-Experience real NotX Connect app mechanics right inside this README! *(Click the boxes to reveal what happens)*.
-
----
-
-### 🎮 GAME 1: THE 8:59 AM ATTENDANCE SPRINT
-
-You are sprinting 200 meters across campus toward the seminar hall. The symposium gate locks in 45 seconds.
-
-**Choose your play:**
-
-1. **Option A: Sprint like an Olympic athlete with your NotX Connect digital pass open.**
-   <details>
-   <summary>👉 Click to see result</summary>
-   
-   ```text
-   💥 RESULT: TOTAL TRIUMPH!
-   You slide across the seminar hall floor like a rockstar.
-   The coordinator points the NotX Connect camera scanner at your phone.
-   
-   ┌──────────────────────────────────────────────────────────┐
-   │ [BEEP!] ✅ ATTENDANCE RECORDED                           │
-   │ Student: 23HM1A3354 • Syed Sameer                        │
-   │ Event:   National AI Symposium                           │
-   │ Status:  VERIFIED & TIMESTAMPED [08:59:38 AM]            │
-   └──────────────────────────────────────────────────────────┘
-   
-   Reward: +100 Event XP, guaranteed front-row seat & hot samosa.
-   ```
-   </details>
-
-2. **Option B: Send a WhatsApp screenshot of your QR ticket to your friend to scan for you.**
-   <details>
-   <summary>👉 Click to see result</summary>
-   
-   ```text
-   🚫 RESULT: CAUGHT RED-HANDED!
-   Your friend steps up to the scanner. The coordinator aims the camera:
-   
-   ┌──────────────────────────────────────────────────────────┐
-   │ [BUZZER!] ⚠️ DUPLICATE SCAN REJECTED                     │
-   │ This pass was ALREADY checked in at 08:57:12 AM!         │
-   │ Verified By: Coordinator Naseer                          │
-   └──────────────────────────────────────────────────────────┘
-   
-   The duplicate scanner trap triggers audio alarms.
-   Your friend looks up at the ceiling pretending they found the phone on the ground.
-   Penalty: -50 Aura.
-   ```
-   </details>
-
-3. **Option C: Blame campus Wi-Fi and present a fake Canva screenshot.**
-   <details>
-   <summary>👉 Click to see result</summary>
-   
-   ```text
-   💀 RESULT: CRITICAL SECURITY REJECTION!
-   The coordinator's scanner decodes the QR payload and tests the 8-char SHA-256 HMAC signature.
-   
-   ┌──────────────────────────────────────────────────────────┐
-   │ [ALERT!] 🛑 INVALID CRYPTOGRAPHIC SIGNATURE              │
-   │ PAYLOAD TAMPERED • CHECKSUM MISMATCH                     │
-   └──────────────────────────────────────────────────────────┘
-   
-   The Department HOD turns around and makes eye contact with you.
-   Roll 1d20 for excuse persuasion or begin writing your 500-word apology letter.
-   ```
-   </details>
+Explore the actual interactive UI components of **NotX Connect** directly inside this README. Click each component to test its behavior and live states:
 
 ---
 
-### ⚡ GAME 2: THE 11:59 PM HACKATHON REGISTRATION RUSH
+### 🎟️ COMPONENT 1: THE CRYPTOGRAPHIC DIGITAL PASS (`EventTicketModal`)
+The actual digital ticket modal rendered when an attendee registers for an event.
 
-It's 11:58 PM. A 50-team hackathon has **exactly 1 slot remaining**. Over 40 students are spamming the registration button.
-
-**What is your strategy?**
-
-1. **Option A: Hit the NotX Connect "Register Team" button with properly formatted roll numbers.**
-   <details>
-   <summary>👉 Click to see result</summary>
-   
-   ```text
-   🎉 RESULT: ATOMIC TRANSACTION LOCK ACQUIRED!
-   Firestore executes an atomic capacity transaction:
-   currentRegistrations (49) < maxCapacity (50) -> APPROVED!
-   
-   Your digital team pass generates instantly with individual cryptographic QR codes!
-   Status: TEAM REGISTERED (#50/50).
-   ```
-   </details>
-
-2. **Option B: Hit register 200 milliseconds too late.**
-   <details>
-   <summary>👉 Click to see result</summary>
-   
-   ```text
-   🛑 RESULT: CAPACITY BOUNDARY ENFORCED!
-   NotX Connect real-time concurrency check blocks overbooking:
-   "⚠️ EVENT SOLD OUT - Capacity of 50 teams reached."
-   
-   Zero overbooking errors. Zero awkward emails telling teams they have to be disqualified.
-   ```
-   </details>
-
----
-
-### 🧠 GAME 3: CAMPUS COORDINATOR TRIVIA
-
-<details>
-<summary><b>❓ Q1: How fast does the NotX Connect QR scanner validate attendance?</b></summary>
-<blockquote>
-<b>Answer:</b> <b>Under 200ms!</b> The HTML5-QRCode hardware camera pipeline captures the frame, decodes the encrypted ticket token, validates the signature against Firestore, writes the check-in timestamp, and provides haptic vibration & audio chime instantly.
-</blockquote>
-</details>
-
-<details>
-<summary><b>❓ Q2: What happens if an over-caffeinated coordinator deletes an event by accident?</b></summary>
-<blockquote>
-<b>Answer:</b> <b>Zero panic!</b> NotX Connect has a built-in <b>Zero-Loss Safety Vault</b> (<code>deleted_backups</code>). All deleted events, registrations, certificates, and winners are staged for instant one-click recovery.
-</blockquote>
-</details>
-
-<details>
-<summary><b>❓ Q3: Can a student inspect element and give themselves 'Super Admin' privileges?</b></summary>
-<blockquote>
-<b>Answer:</b> <b>Nice try!</b> Firestore server-side security rules explicitly forbid non-admins from mutating <code>role</code> or <code>isSuperAdmin</code>. Any client-side tampering is rejected directly at the database layer.
-</blockquote>
-</details>
-
----
-
-## 📱 REAL INTERACTIVE VIEWS (WHAT'S IN THE APP)
-
-NotX Connect is divided into high-speed, purpose-built workspaces:
-
-### 1. 🎟️ Digital Event Arena & Cryptographic Passes
-- **Solo & Team Registration**: Dynamic roster inputs with student validation.
-- **Concurrency Guards**: Real-time capacity check stops registration when slots fill up.
-- **Cryptographic Ticket**: Each pass generates an 8-character salted SHA-256 HMAC signature.
+<details open>
+<summary><b>👉 [CLICK TO INSPECT PASS COMPONENT]</b></summary>
 
 ```text
-┌──────────────────────────────────────────────────────────┐
-│  🎟️ NOTX CONNECT DIGITAL PASS • CSE (AI & ML)             │
-├──────────────────────────────────────────────────────────┤
-│  EVENT:   State-Level GenAI Hackathon 2026               │
-│  HOLDER:  Syed Sameer                                    │
-│  ROLL:    23HM1A3354                                     │
-│  SEAT:    TEAM LEAD • TABLE #14                          │
-│                                                          │
-│  [ ██  ████  ██ ]  PASS ID: REG-882194                   │
-│  [ ██  ████  ██ ]  CRYPTO:  a7f49c2e (HMAC-SHA256)       │
-│  [ ██  ████  ██ ]  STATUS:  CONFIRMED & VALID            │
-└──────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────┐
+│  NOTX CONNECT • EVENT PASS                                 [CSE-AIML]  │
+├────────────────────────────────────────────────────────────────────────┤
+│  EVENT:       National Level GenAI Symposium 2026                      │
+│  ATTENDEE:    Syed Sameer (23HM1A3354)                                 │
+│  DEPARTMENT:  Artificial Intelligence & Machine Learning               │
+│  REG ID:      REG-994821                                               │
+│                                                                        │
+│   ▄▄▄▄▄▄▄  ▄ ▄▄ ▄▄ ▄▄▄▄▄▄▄    CRYPTO CHECKSUM:   7e2b81fa              │
+│   █ ▄▄▄ █ ▀█▄▀ ▀██ █ ▄▄▄ █    ALGORITHM:         HMAC-SHA256           │
+│   █ ███ █ █ █ █▀ █ █ ███ █    SIGNATURE PAYLOAD: tenant+event+reg+roll │
+│   █▄▄▄▄▄█ █ ▀ ▀ █▀ █▄▄▄▄▄█    STATUS:            🟢 CONFIRMED & VALID  │
+│                                                                        │
+│  [ DOWNLOAD PASS (PNG) ]          [ ADD TO APPLE / GOOGLE WALLET ]     │
+└────────────────────────────────────────────────────────────────────────┘
 ```
-
-### 2. 📷 High-Speed Camera Scanner (`QRCameraScanner`)
-- Uses phone camera via `html5-qrcode` to scan passes without installing external apps.
-- Instant validation: Detects counterfeit passes, wrong department passes, and duplicate scans.
-- Haptic buzzer + audible chime + green flash for instant crowd management.
-
-### 3. 🎓 Verified Credentials Desk (`CertificateVerificationModal`)
-- Every certificate issued by a department receives a unique public ID (e.g. `NX-CERT-2026-9912`).
-- Recruiter verification: Anyone can visit the verification link to see student name, event title, issue date, and issuing department without needing to log in.
-
-### 4. 🏆 Wall of Champions & Podium
-- Interactive victory showcase honoring 1st, 2nd, and 3rd place winners.
-- Displays project github repositories, live demo links, cash prize badges, and celebration confetti.
-
-### 5. 📢 Department Circulars & Bulletins (`AnnouncementsView`)
-- Official markdown announcements tagged by `Exam`, `Workshop`, `Result`, `Notice`, and `News`.
-- Supports image attachments via Cloudinary CDN.
-
-### 6. 🖼️ Campus Memories Lightbox (`GalleryView`)
-- Responsive visual gallery of past hackathons, workshops, and guest lectures.
-- Full-screen neo-brutalist lightbox viewer with keyboard navigation.
-
-### 7. 👥 Association Directory & Developer Showcase (`MembersView`)
-- Searchable directory of students and faculty coordinators.
-- Filter by Year, Role, or Department.
-- Developer showcase honoring the creators with custom social links.
-
-### 8. 🛡️ Multi-Tenant Admin & SuperAdmin Command Center
-- **Tenant Admins**: Create events, manage coordinators, publish circulars, and issue certificates for their department.
-- **Super Admin**: Oversees all departments, manages global platform configuration, monitors system crash logs, and manages the safety recovery vault.
+> **What this does in the app**: Computes a salted 8-character SHA-256 HMAC hash on pass generation. If an attendee alters any data in the QR payload, the hardware scanner immediately rejects the pass.
+</details>
 
 ---
 
-## 🏗️ SYSTEM ARCHITECTURE & DATA FLOW
+### 📷 COMPONENT 2: REAL-TIME HARDWARE SCANNER HUD (`QRCameraScanner`)
+The in-app optical scanner used by event coordinators to check in attendees. Click each state to preview real responses:
+
+<details>
+<summary><b>🟢 State A: First-time Valid Check-In (Click to preview)</b></summary>
+
+```text
+┌────────────────────────────────────────────────────────────────────────┐
+│  CAMERA HUD: 60 FPS • 1080p OPTICAL FEED                  [AUTO-FOCUS] │
+├────────────────────────────────────────────────────────────────────────┤
+│                                                                        │
+│                 ┌──────────────────────────┐                           │
+│                 │   [SCAN RETICLE ACTIVE]  │                           │
+│                 │      ▄▄▄▄▄▄▄   ▄▄▄▄▄▄▄   │                           │
+│                 │      █ ▄▄▄ █   █ ▄▄▄ █   │                           │
+│                 │      █▄▄▄▄▄█   █▄▄▄▄▄█   │                           │
+│                 └──────────────────────────┘                           │
+│                                                                        │
+│  STATUS: ✅ CHECK-IN CONFIRMED (Latency: 142ms)                        │
+│  STUDENT: Syed Sameer (23HM1A3354)                                     │
+│  ACTION:  Recorded in Firestore • Attended at 08:59:41 AM              │
+│  FEEDBACK: [AUDIO CHIME 🔔] + [HAPTIC VIBRATION 📳] + [GREEN FLASH 🟩]   │
+└────────────────────────────────────────────────────────────────────────┘
+```
+</details>
+
+<details>
+<summary><b>🟡 State B: Duplicate Scan Attempt (Click to preview)</b></summary>
+
+```text
+┌────────────────────────────────────────────────────────────────────────┐
+│  CAMERA HUD: 60 FPS • 1080p OPTICAL FEED                  [AUTO-FOCUS] │
+├────────────────────────────────────────────────────────────────────────┤
+│  STATUS: ⚠️ DUPLICATE PASS DETECTED!                                   │
+│  ATTENDEE ALREADY CHECKED IN AT: 08:54:10 AM                           │
+│  VERIFIED BY: Coordinator Naseer (UID: coord-04)                       │
+│  FEEDBACK: [WARNING BUZZER 🚨] + [YELLOW WARNING BANNER 🟨]             │
+│  ACTION: Attendance write aborted. Duplicate entry prevented.          │
+└────────────────────────────────────────────────────────────────────────┘
+```
+</details>
+
+<details>
+<summary><b>🔴 State C: Forged / Counterfeit Ticket (Click to preview)</b></summary>
+
+```text
+┌────────────────────────────────────────────────────────────────────────┐
+│  CAMERA HUD: 60 FPS • 1080p OPTICAL FEED                  [AUTO-FOCUS] │
+├────────────────────────────────────────────────────────────────────────┤
+│  STATUS: 🛑 INVALID CRYPTOGRAPHIC SIGNATURE!                           │
+│  CHECKSUM: MISMATCH (Expected 7e2b81fa, received 99aa01bb)             │
+│  REASON: Payload was modified or ticket does not exist in database.    │
+│  FEEDBACK: [CRITICAL ALARM 🔊] + [RED SCREEN FLASH 🟥]                  │
+└────────────────────────────────────────────────────────────────────────┘
+```
+</details>
+
+---
+
+### 🎓 COMPONENT 3: VERIFIED CREDENTIALS DESK (`CertificateVerificationModal`)
+Public, unauthenticated verification portal for authenticating student certificates.
+
+<details open>
+<summary><b>👉 [CLICK TO INSPECT CERTIFICATE VERIFICATION]</b></summary>
+
+```text
+┌────────────────────────────────────────────────────────────────────────┐
+│  NOTX CONNECT • PUBLIC CERTIFICATE VERIFICATION DESK                   │
+├────────────────────────────────────────────────────────────────────────┤
+│  VERIFICATION ID:   NX-CERT-2026-9912                                  │
+│  ISSUED TO:         Syed Sameer                                        │
+│  ROLL NUMBER:       23HM1A3354                                         │
+│  ACHIEVEMENT:       1st Place Winner — State Level Hackathon           │
+│  ISSUING AUTHORITY: Dept of CSE (AI & ML) • Academic Council           │
+│  ISSUE DATE:        October 2026                                       │
+│  VERIFICATION URL:  https://notx-saas.vercel.app/verify/NX-CERT-9912   │
+│                                                                        │
+│  STATUS:            🛡️ CRYPTOGRAPHICALLY AUTHENTICATED & RECORDED       │
+└────────────────────────────────────────────────────────────────────────┘
+```
+> **What this does in the app**: Anyone (recruiters, professors, external judges) can open the public verification link and inspect the authentic issue record without creating an account or logging in.
+</details>
+
+---
+
+### 🏆 COMPONENT 4: WALL OF CHAMPIONS PODIUM (`EventsView`)
+The visual leaderboard and hall-of-fame celebrating event winners.
+
+<details>
+<summary><b>👉 [CLICK TO REVEAL PODIUM ROSTER]</b></summary>
+
+```text
+                           ┌───────────────┐
+                           │      👑       │
+                           │   1ST PLACE   │
+                           │  TEAM NEURAL  │
+           ┌───────────────┤  23HM1A3354   ├───────────────┐
+           │   🥈 2ND      │  Cash: ₹10,000│   🥉 3RD      │
+           │  BYTECRAFT    └───────────────┘  CODEFORGE    │
+           │  23HM1A3312       [PROJECT]      23HM1A3345   │
+           │  Cash: ₹5,000   [GITHUB REPO]    Cash: ₹2,500 │
+           └───────────────┘               └───────────────┘
+```
+> **What this does in the app**: Dynamic awards showcase supporting project repository links, demo video embeds, cash prize tags, and winner roster cards.
+</details>
+
+---
+
+### 🛡️ COMPONENT 5: ZERO-LOSS SAFETY VAULT (`SuperAdminDashboard`)
+The cascade soft-delete recovery engine that prevents accidental catastrophic data wipes.
+
+<details>
+<summary><b>👉 [CLICK TO INSPECT VAULT LOGIC]</b></summary>
+
+```text
+┌────────────────────────────────────────────────────────────────────────┐
+│  NOTX CONTROL PLANE • ZERO-LOSS SAFETY VAULT (deleted_backups)         │
+├────────────────────────────────────────────────────────────────────────┤
+│  [RESTORE]  Event: "AI Hackathon" (Staged with 48 registrations)       │
+│  [RESTORE]  Tenant: "ECE-ROBOTICS" (Staged with 120 members)           │
+│  [RESTORE]  Certificate Batch: "Symposium 2026" (180 certs)           │
+│                                                                        │
+│  SAFETY PROTOCOL:                                                      │
+│  Deleting any document cascades all children into `deleted_backups`.   │
+│  Super Admins can undo deletions with 1 click or permanently purge.    │
+└────────────────────────────────────────────────────────────────────────┘
+```
+</details>
+
+---
+
+## 📱 ALL REAL MODULES IN NOTX CONNECT
+
+```text
+┌───────────────────────────┬────────────────────────────────────────────────────────┐
+│ APP MODULE                │ REAL PRODUCTION FUNCTIONALITY                          │
+├───────────────────────────┼────────────────────────────────────────────────────────┤
+│ 📊 Student Command Deck   │ Live attendance meters, active passes wallet, next     │
+│                           │ event countdowns, and quick-check-in shortcuts.        │
+├───────────────────────────┼────────────────────────────────────────────────────────┤
+│ 🎟️ Event Arena            │ Solo & team registration with atomic slot reservation, │
+│                           │ capacity limit guards, and scannable QR generation.    │
+├───────────────────────────┼────────────────────────────────────────────────────────┤
+│ 📷 Optical Camera Scanner │ Direct browser camera stream via `html5-qrcode`. Zero  │
+│                           │ app downloads required; works on mobile Safari/Chrome. │
+├───────────────────────────┼────────────────────────────────────────────────────────┤
+│ 🏆 Wall of Champions      │ Hall-of-fame podium celebrating 1st/2nd/3rd winners,   │
+│                           │ team rosters, project GitHub links, and prize badges.  │
+├───────────────────────────┼────────────────────────────────────────────────────────┤
+│ 🎓 Verified Credentials   │ Instant digital certificate viewer with unique public  │
+│                           │ verification URLs. Anyone can verify authenticity.     │
+├───────────────────────────┼────────────────────────────────────────────────────────┤
+│ 📢 Circulars & Bulletins  │ Markdown department circulars with category filters    │
+│                           │ (Exam, Workshop, Result, Notice) & image attachments.  │
+├───────────────────────────┼────────────────────────────────────────────────────────┤
+│ 🖼️ Campus Memories        │ High-res photo gallery with full-screen lightbox for   │
+│                           │ past tech symposiums, workshops, and hackathons.       │
+├───────────────────────────┼────────────────────────────────────────────────────────┤
+│ 👥 Association Directory  │ Searchable directory of students and faculty           │
+│                           │ coordinators with badges and role tags.                │
+├───────────────────────────┼────────────────────────────────────────────────────────┤
+│ 🛠️ Multi-Tenant Admin     │ Independent workspaces for collegiate departments with │
+│                           │ custom logos, accent themes, quotas, and audit logs.   │
+├───────────────────────────┼────────────────────────────────────────────────────────┤
+│ 📴 PWA Ready              │ Progressive Web App that works offline and installs    │
+│                           │ natively to home screens without an app store.         │
+└───────────────────────────┴────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 🏗️ DATA FLOW & VERIFICATION ARCHITECTURE
 
 ```mermaid
 sequenceDiagram
@@ -306,14 +323,13 @@ sequenceDiagram
 
 ---
 
-## 🎨 THE NEO-BRUTALIST DESIGN PHILOSOPHY
+## 🎨 THE NEO-BRUTALIST DESIGN SYSTEM
 
-We deliberately chose a **Neo-Brutalist** aesthetic:
-- **No blurry gradients or fake glassmorphism**: Sharp, confident 2px ink borders (`var(--nb-ink)`).
-- **Hard offset drop shadows**: `3px 3px 0 var(--nb-ink)` for tactile, retro-modern interaction.
-- **Punchy contrast accents**: Cyber Amber, Neo Emerald, Vibrant Rose, Electric Purple, Cobalt Tech.
-- **Clean profile avatars**: No unnecessary decorative borders; focus stays on the content.
-- **Micro-animations**: Satisfying tactile button presses (`active:translate-x-0.5 active:translate-y-0.5`).
+- **2px Solid Ink Borders**: `border: 2px solid var(--nb-ink)` for crisp, confident framing.
+- **Hard Offset Drop Shadows**: `box-shadow: 3px 3px 0 var(--nb-ink)` (No blurry gradients!).
+- **High-Contrast Palette**: Cyber Amber, Neo Emerald, Vibrant Rose, Electric Purple, Cobalt Tech.
+- **Clean Profile Avatars**: Clean avatars with zero distracting decorative borders.
+- **Tactile Button Clicks**: Active down-press physics (`translate-x-0.5 translate-y-0.5`).
 
 ---
 
