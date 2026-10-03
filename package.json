@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test:saas": "tsx scripts/test-saas-lifecycle.ts"
+    "test:saas": "tsx scripts/test-saas-lifecycle.ts",
+    "test:concurrency": "tsx scripts/test-concurrency-scale.ts"
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.3.0",

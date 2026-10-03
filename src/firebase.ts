@@ -1515,25 +1515,59 @@ export async function createRegistration(reg: EventRegistration): Promise<void> 
     const regDocRef = doc(db, 'registrations', reg.registrationId);
     const eventDocRef = doc(db, 'events', reg.eventId);
 
-    await runTransaction(db, async (transaction) => {
-      // 1. Verify capacity if tracked on event
-      const eventSnap = await transaction.get(eventDocRef);
-      if (eventSnap.exists()) {
-        const evData = eventSnap.data() as DepartmentEvent;
-        if (evData.maxParticipants && evData.maxParticipants > 0) {
-          const currentCount = evData.currentRegistrations || 0;
-          if (currentCount >= evData.maxParticipants) {
-            throw new Error(`Event "${evData.title}" is full (maximum capacity: ${evData.maxParticipants}).`);
-          }
-          transaction.update(eventDocRef, {
-            currentRegistrations: currentCount + 1
-          });
-        }
-      }
+    const maxRetries = 15;
+    let attempt = 0;
 
-      // 2. Set registration record
-      transaction.set(regDocRef, cleanUndefined(finalReg));
-    });
+    while (attempt < maxRetries) {
+      try {
+        await runTransaction(db, async (transaction) => {
+          // 1. Verify capacity if tracked on event
+          const eventSnap = await transaction.get(eventDocRef);
+          if (eventSnap.exists()) {
+            const evData = eventSnap.data() as DepartmentEvent;
+
+            // Strict Multi-Tenant Boundary: Students can only register for their own tenant's events
+            const eventTenant = (evData.tenantId || '').trim().toLowerCase();
+            const studentTenant = (finalReg.tenantId || '').trim().toLowerCase();
+            if (eventTenant && studentTenant && eventTenant !== studentTenant) {
+              throw new Error(`Cross-Tenant Registration Denied: Event "${evData.title}" belongs to department "${evData.tenantId}". You can only register for events organized by your own department.`);
+            }
+
+            if (evData.maxParticipants && evData.maxParticipants > 0) {
+              const currentCount = evData.currentRegistrations || 0;
+              if (currentCount >= evData.maxParticipants) {
+                throw new Error(`Event "${evData.title}" is full (maximum capacity: ${evData.maxParticipants}).`);
+              }
+              transaction.update(eventDocRef, {
+                currentRegistrations: currentCount + 1
+              });
+            }
+          }
+
+          // 2. Set registration record
+          transaction.set(regDocRef, cleanUndefined(finalReg));
+        });
+
+        // Succeeded
+        break;
+      } catch (err: any) {
+        const msg = err?.message || String(err);
+        // Domain rejections: do not retry
+        if (msg.includes('Cross-Tenant Registration Denied') || msg.includes('full')) {
+          throw err;
+        }
+
+        attempt++;
+        if (attempt >= maxRetries) {
+          handleFirestoreError(err, OperationType.CREATE, path);
+          throw err;
+        }
+        // Contention backoff with random jitter (50ms - 400ms)
+        const jitter = Math.floor(Math.random() * 80);
+        const delay = Math.min(1200, Math.pow(1.5, attempt) * 60 + jitter);
+        await new Promise(r => setTimeout(r, delay));
+      }
+    }
 
     await writeAuditLog({
       action: 'registration.create',
@@ -1545,7 +1579,9 @@ export async function createRegistration(reg: EventRegistration): Promise<void> 
       severity: 'info'
     });
   } catch (error: any) {
-    handleFirestoreError(error, OperationType.CREATE, path);
+    if (!error?.message?.includes('Cross-Tenant Registration Denied') && !error?.message?.includes('full')) {
+      handleFirestoreError(error, OperationType.CREATE, path);
+    }
     throw error;
   }
 }
