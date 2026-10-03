@@ -1,16 +1,21 @@
 <div align="center">
 
+<pre>
 ███╗   ██╗ ██████╗ ████████╗██╗  ██╗
 ████╗  ██║██╔═══██╗╚══██╔══╝╚██╗██╔╝
 ██╔██╗ ██║██║   ██║   ██║    ╚███╔╝
 ██║╚██╗██║██║   ██║   ██║    ██╔██╗
 ██║ ╚████║╚██████╔╝   ██║   ██╔╝ ██╗
 ╚═╝  ╚═══╝ ╚═════╝    ╚═╝   ╚═╝  ╚═╝
+</pre>
 
-              
+<h3>⚡ MULTI-TENANT ACADEMIC ASSOCIATION OPERATING SYSTEM ⚡</h3>
 
-### ⚡ MULTI-TENANT ACADEMIC ASSOCIATION OPERATING SYSTEM ⚡
-**High-Performance Campus Event Management • Cryptographic QR Passes • Digital Credentials Desk • Zero-Loss Safety Vault**
+<p>
+<b>High-Performance Campus Event Management • Cryptographic QR Passes • Digital Credentials Desk • Zero-Loss Safety Vault</b>
+</p>
+
+</div>
 
 ---
 
