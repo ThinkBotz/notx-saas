@@ -1,6 +1,5 @@
 import { initializeApp, getApps as getSecondaryApps } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signOut as signOutSecondary } from 'firebase/auth';
-import { getDatabase, ref, get, set, push, remove, update, onValue } from 'firebase/database';
 import { 
   initializeFirestore, 
   collection, 
@@ -27,8 +26,6 @@ import {
   SUPER_ADMIN_EMAILS,
   UserProfile,
   TeamMember,
-  UserInvitation,
-  ChatRoom,
   AppConfig,
   SupportInfo,
   DEFAULT_SUPPORT_INFO,
@@ -56,7 +53,6 @@ export const db = initializeFirestore(app, {
   experimentalForceLongPolling: true,
 });
 export const auth = getAuth(app);
-export const rtdb = getDatabase(app, (firebaseConfig as any).databaseURL);
 
 // ---------------- MULTI-TENANT SAAS ARCHITECTURE ----------------
 export const DEFAULT_TENANT_ID = 'cse-aiml';
@@ -154,7 +150,6 @@ export async function createTenant(tenant: Tenant): Promise<void> {
     // Initialize tenant-scoped app configuration with initial branding & settings
     const configDocId = `config_${cleanId}`;
     const initialConfig: AppConfig = {
-      isChatEnabled: true,
       isCertificatesEnabled: true,
       certificateTemplate: DEFAULT_CERTIFICATE_TEMPLATE,
       supportInfo: finalTenant.supportInfo || DEFAULT_SUPPORT_INFO,
@@ -1705,74 +1700,6 @@ export async function createAnnouncement(announce: Announcement): Promise<void> 
   }
 }
 
-// User Invitations & Direct Messaging
-export async function fetchReceivedInvitations(rollNumber: string, tenantId?: string): Promise<UserInvitation[]> {
-  try {
-    const cleanTid = (tenantId || getActiveTenantId()).trim().toLowerCase();
-    const q = query(collection(db, 'invitations'), where('recipientRoll', '==', rollNumber.trim().toUpperCase()));
-    const querySnapshot = await getDocs(q);
-    const list: UserInvitation[] = [];
-    querySnapshot.forEach((doc) => {
-      const inv = doc.data() as UserInvitation;
-      // Tenant-scope: include only invitations that match this tenant (or have no tenant for legacy)
-      if (!cleanTid || !inv.tenantId || inv.tenantId === cleanTid) {
-        list.push(inv);
-      }
-    });
-    return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  } catch (error) {
-    handleFirestoreError(error, OperationType.LIST, 'invitations');
-    return [];
-  }
-}
-
-export async function fetchSentInvitations(uid: string, rollNumber?: string, tenantId?: string): Promise<UserInvitation[]> {
-  try {
-    const cleanTid = (tenantId || getActiveTenantId()).trim().toLowerCase();
-    let q;
-    if (rollNumber) {
-      q = query(collection(db, 'invitations'), where('senderRoll', '==', rollNumber.trim().toUpperCase()));
-    } else {
-      q = query(collection(db, 'invitations'), where('senderUid', '==', uid));
-    }
-    const querySnapshot = await getDocs(q);
-    const list: UserInvitation[] = [];
-    querySnapshot.forEach((doc) => {
-      const inv = doc.data() as UserInvitation;
-      if (!cleanTid || !inv.tenantId || inv.tenantId === cleanTid) {
-        list.push(inv);
-      }
-    });
-    return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  } catch (error) {
-    handleFirestoreError(error, OperationType.LIST, 'invitations');
-    return [];
-  }
-}
-
-export async function createInvitation(invite: UserInvitation): Promise<void> {
-  const path = `invitations/${invite.invitationId}`;
-  try {
-    const docRef = doc(db, 'invitations', invite.invitationId);
-    const finalInvite = {
-      ...invite,
-      tenantId: invite.tenantId || getActiveTenantId()
-    };
-    await setDoc(docRef, cleanUndefined(finalInvite));
-  } catch (error) {
-    handleFirestoreError(error, OperationType.CREATE, path);
-  }
-}
-
-export async function updateInvitationStatus(inviteId: string, status: 'Pending' | 'Accepted' | 'Declined'): Promise<void> {
-  const path = `invitations/${inviteId}`;
-  try {
-    const docRef = doc(db, 'invitations', inviteId);
-    await updateDoc(docRef, { status });
-  } catch (error) {
-    handleFirestoreError(error, OperationType.UPDATE, path);
-  }
-}
 
 // Deletions
 export async function updateEvent(event: DepartmentEvent): Promise<void> {
@@ -1806,154 +1733,6 @@ export async function deleteAnnouncement(announcementId: string, actor?: Partial
 }
 
 
-// ---------------- UNIFIED CHATS COLLECTION (REALTIME DATABASE RTDB MODEL) ----------------
-
-export function getChatRoomId(rollA: string, rollB: string, tenantId?: string): string {
-  const rA = rollA.trim().toUpperCase();
-  const rB = rollB.trim().toUpperCase();
-  // Sort alphabetically to ensure same ID is generated for both (A->B and B->A)
-  const sorted = [rA, rB].sort();
-  const base = `CHAT_${sorted[0]}_${sorted[1]}`;
-  // Prefix with tenantId so each association's chats are isolated in RTDB
-  return tenantId ? `${tenantId.trim().toLowerCase()}/${base}` : base;
-}
-
-export async function sendChatMessage(
-  sender: UserProfile,
-  recipientRoll: string,
-  recipientUid: string,
-  recipientName: string,
-  messageText: string,
-  type: 'chat' | 'invite' = 'chat'
-): Promise<void> {
-  if (!sender.rollNumber) throw new Error("Sender has no roll number");
-  
-  const rRoll = recipientRoll.trim().toUpperCase();
-  const sRoll = sender.rollNumber.trim().toUpperCase();
-  const chatId = getChatRoomId(sRoll, rRoll, sender.tenantId || getActiveTenantId());
-  
-  try {
-    const chatRef = ref(rtdb, `chats/${chatId}`);
-    const snapshot = await get(chatRef);
-    let isNewChat = true;
-    
-    if (snapshot.exists()) {
-      const val = snapshot.val();
-      if (val.messages && Object.keys(val.messages).length > 0) {
-        isNewChat = false;
-      }
-    }
-
-    const actualType = isNewChat ? 'invite' : type;
-    const msgId = `msg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-    
-    const newInvite: UserInvitation = {
-      invitationId: msgId,
-      senderUid: sender.uid,
-      senderName: sender.name,
-      senderRoll: sRoll,
-      recipientUid,
-      recipientRoll: rRoll,
-      recipientName,
-      message: messageText.trim(),
-      status: 'Pending',
-      createdAt: new Date().toISOString(),
-      type: actualType,
-      isRead: false
-    };
-
-    const updates: Record<string, any> = {};
-    updates[`chats/${chatId}/participants`] = [sRoll, rRoll];
-    updates[`chats/${chatId}/chatId`] = chatId;
-    updates[`chats/${chatId}/lastMessageAt`] = newInvite.createdAt;
-    updates[`chats/${chatId}/messages/${msgId}`] = cleanUndefined(newInvite);
-
-    await update(ref(rtdb), updates);
-  } catch (error) {
-    console.error("Error sending chat message via RTDB:", error);
-    throw error;
-  }
-}
-
-export async function markMessagesAsRead(
-  userRoll: string,
-  classmateRoll: string,
-  tenantId?: string
-): Promise<void> {
-  const chatId = getChatRoomId(userRoll, classmateRoll, tenantId);
-  const userRollUpper = userRoll.trim().toUpperCase();
-  
-  try {
-    const msgsRef = ref(rtdb, `chats/${chatId}/messages`);
-    const snapshot = await get(msgsRef);
-    if (!snapshot.exists()) return;
-
-    const msgs = snapshot.val() || {};
-    const updates: Record<string, any> = {};
-
-    Object.entries(msgs).forEach(([msgId, msg]: [string, any]) => {
-      if (msg.recipientRoll?.toUpperCase() === userRollUpper && msg.type === 'chat' && !msg.isRead) {
-        updates[`chats/${chatId}/messages/${msgId}/isRead`] = true;
-      }
-    });
-
-    if (Object.keys(updates).length > 0) {
-      await update(ref(rtdb), updates);
-    }
-  } catch (error) {
-    console.error("Error marking messages as read via RTDB:", error);
-  }
-}
-
-export async function respondToChatInvite(
-  chatId: string,
-  messageId: string,
-  status: 'Accepted' | 'Declined'
-): Promise<void> {
-  try {
-    const msgRef = ref(rtdb, `chats/${chatId}/messages/${messageId}/status`);
-    await set(msgRef, status);
-  } catch (error) {
-    console.error("Error responding to chat invite via RTDB:", error);
-  }
-}
-
-export async function deleteChatRoom(chatId: string): Promise<void> {
-  try {
-    await remove(ref(rtdb, `chats/${chatId}`));
-  } catch (error) {
-    console.error("Error deleting chat room via RTDB:", error);
-  }
-}
-
-export async function deleteChatMessage(
-  chatId: string,
-  messageId: string
-): Promise<void> {
-  try {
-    await remove(ref(rtdb, `chats/${chatId}/messages/${messageId}`));
-  } catch (error) {
-    console.error("Error deleting chat message via RTDB:", error);
-  }
-}
-
-export async function updateTypingStatus(
-  chatId: string,
-  rollNumber: string,
-  isTyping: boolean
-): Promise<void> {
-  const cleanRoll = rollNumber.trim().toUpperCase();
-  try {
-    const typingRef = ref(rtdb, `chats/${chatId}/typing/${cleanRoll}`);
-    if (isTyping) {
-      await set(typingRef, true);
-    } else {
-      await remove(typingRef);
-    }
-  } catch (error) {
-    console.error('Error updating typing status via RTDB:', error);
-  }
-}
 
 
 // Per-tenant config doc ID helper
@@ -1990,7 +1769,6 @@ export async function getAppConfig(tenantId?: string): Promise<AppConfig> {
         } catch (e) {}
       }
       const defaultConfig: AppConfig = { 
-        isChatEnabled: true,
         isCertificatesEnabled: true,
         certificateTemplate: DEFAULT_CERTIFICATE_TEMPLATE,
         supportInfo: tenantSupport,
@@ -2004,7 +1782,6 @@ export async function getAppConfig(tenantId?: string): Promise<AppConfig> {
   } catch (error) {
     console.error('Error getting app config:', error);
     return { 
-      isChatEnabled: true, 
       isCertificatesEnabled: true,
       certificateTemplate: DEFAULT_CERTIFICATE_TEMPLATE,
       supportInfo: DEFAULT_SUPPORT_INFO,
@@ -2019,16 +1796,6 @@ function normalizeAppConfig(data: AppConfig): AppConfig {
   if (!data.certificateTemplate) data.certificateTemplate = DEFAULT_CERTIFICATE_TEMPLATE;
   if (!data.branding) data.branding = DEFAULT_BRANDING;
   return data;
-}
-
-export async function updateAppConfig(isChatEnabled: boolean, tenantId?: string): Promise<void> {
-  const docId = getConfigDocId(tenantId);
-  try {
-    const configDocRef = doc(db, 'appSettings', docId);
-    await setDoc(configDocRef, { isChatEnabled }, { merge: true });
-  } catch (error) {
-    console.error('Error updating app config:', error);
-  }
 }
 
 export async function toggleCertificatesEnabled(isCertificatesEnabled: boolean, tenantId?: string): Promise<void> {
@@ -2158,7 +1925,6 @@ export function subscribeToAppConfig(callback: (config: AppConfig) => void, tena
         try { fallbackBranding = JSON.parse(cached); } catch (e) {}
       }
       callback({
-        isChatEnabled: true,
         isCertificatesEnabled: true,
         certificateTemplate: DEFAULT_CERTIFICATE_TEMPLATE,
         supportInfo: DEFAULT_SUPPORT_INFO,
@@ -2189,8 +1955,6 @@ export interface SystemBackupData {
     albums: Album[];
     gallery: any[];
     notifications: any[];
-    invitations: any[];
-    chats: any[];
     appSettings: any[];
   };
 }
@@ -2207,8 +1971,6 @@ export async function exportAllDatabaseData(exportedByName?: string, tenantId?: 
     'albums',
     'gallery',
     'notifications',
-    'invitations',
-    'chats',
     'appSettings'
   ];
 
@@ -2231,8 +1993,6 @@ export async function exportAllDatabaseData(exportedByName?: string, tenantId?: 
       albums: [],
       gallery: [],
       notifications: [],
-      invitations: [],
-      chats: [],
       appSettings: []
     }
   };
@@ -2337,9 +2097,7 @@ export async function resetEntireDatabaseForNewAssociation(
     'announcements',
     'albums',
     'gallery',
-    'notifications',
-    'invitations',
-    'chats'
+    'notifications'
   ];
 
   let completedSteps = 0;
@@ -2417,7 +2175,6 @@ export async function resetEntireDatabaseForNewAssociation(
   try {
     localStorage.removeItem('active_event_draft');
     localStorage.removeItem('selected_event_id');
-    localStorage.removeItem('chat_drafts');
     localStorage.removeItem('qr_scan_recent');
   } catch (e) {
     // ignore
@@ -2428,7 +2185,7 @@ export async function resetEntireDatabaseForNewAssociation(
 }
 
 export const clearAllDatabaseData = async () => {
-  const collections = ['users', 'events', 'registrations', 'albums', 'announcements', 'invitations', 'chats', 'certificates', 'event_winners', 'gallery', 'notifications'];
+  const collections = ['users', 'events', 'registrations', 'albums', 'announcements', 'certificates', 'event_winners', 'gallery', 'notifications'];
   
   for (const collectionName of collections) {
     const querySnapshot = await getDocs(collection(db, collectionName));
@@ -2900,20 +2657,7 @@ export async function getPlatformDevConfig(): Promise<PlatformDevConfig> {
     console.warn('Firestore platformDevConfig read note:', err);
   }
 
-  // Backup read from RTDB
-  try {
-    const rtdbRef = ref(rtdb, 'platformSettings/developers');
-    const rtdbSnap = await get(rtdbRef);
-    if (rtdbSnap.exists()) {
-      const val = rtdbSnap.val() as PlatformDevConfig;
-      if (val && val.members && val.members.length > 0) {
-        localStorage.setItem('notx_platform_devs', JSON.stringify(val));
-        return val;
-      }
-    }
-  } catch (rtdbErr) {
-    console.warn('RTDB platformDevConfig read note:', rtdbErr);
-  }
+
 
   return fallback;
 }
@@ -2954,33 +2698,10 @@ export async function updatePlatformDevConfig(config: PlatformDevConfig): Promis
     console.warn('localStorage platform dev save note:', e);
   }
 
-  // 2. Concurrently execute Firestore and RTDB writes with a safety timeout race
-  const firestoreWrites = async () => {
-    try {
-      await setDoc(doc(db, 'platformSettings', 'developers'), cleanUndefined(cleanConfig));
-    } catch (err) {
-      console.warn('Firestore platformSettings write note:', err);
-    }
-    try {
-      await setDoc(doc(db, 'appSettings', 'platform_developers'), cleanUndefined(cleanConfig));
-    } catch (err) {
-      console.warn('Firestore appSettings platform_developers backup note:', err);
-    }
-  };
-
-  const rtdbWrite = async () => {
-    try {
-      const rtdbRef = ref(rtdb, 'platformSettings/developers');
-      await set(rtdbRef, cleanUndefined(cleanConfig));
-    } catch (rtdbErr) {
-      console.warn('RTDB platformSettings write note:', rtdbErr);
-    }
-  };
-
   try {
-    await Promise.race([
-      Promise.allSettled([firestoreWrites(), rtdbWrite()]),
-      new Promise(resolve => setTimeout(resolve, 1500))
+    await Promise.allSettled([
+      setDoc(doc(db, 'platformSettings', 'developers'), cleanUndefined(cleanConfig)),
+      setDoc(doc(db, 'appSettings', 'platform_developers'), cleanUndefined(cleanConfig))
     ]);
 
     await writeAuditLog({
@@ -3010,24 +2731,7 @@ export function subscribeToPlatformDevConfig(callback: (config: PlatformDevConfi
 
   const unsubs: (() => void)[] = [];
 
-  // 1. Listen in RTDB for ultra-low-latency real-time updates
-  try {
-    const rtdbRef = ref(rtdb, 'platformSettings/developers');
-    const unsubRtdb = onValue(rtdbRef, (snap) => {
-      if (snap.exists()) {
-        const val = snap.val() as PlatformDevConfig;
-        if (val && val.members && val.members.length > 0) {
-          localStorage.setItem('notx_platform_devs', JSON.stringify(val));
-          callback(val);
-        }
-      }
-    }, (err) => {
-      console.warn('RTDB platformDevConfig subscription note:', err);
-    });
-    unsubs.push(unsubRtdb);
-  } catch (err) {
-    console.warn('Failed setting up RTDB platformDevConfig subscription:', err);
-  }
+
 
   // 2. Listen in Firestore as fallback/parallel sync
   try {

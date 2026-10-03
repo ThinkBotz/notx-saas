@@ -73,7 +73,6 @@ import {
   createRegistration,
   clearAllDatabaseData,
   getAppConfig,
-  updateAppConfig,
   updateSupportInfo,
   findUserForLogin,
   toggleCertificatesEnabled,
@@ -269,7 +268,6 @@ export default function AdminPanelView({
     (isAssociate && currentUser.powers?.canViewRegistrations) ||
     isCoordinator;
 
-  const [isChatEnabled, setIsChatEnabled] = useState(true);
   const [supportInfo, setSupportInfo] = useState<SupportInfo>(DEFAULT_SUPPORT_INFO);
   const [isEditSupportModalOpen, setIsEditSupportModalOpen] = useState(false);
 
@@ -300,7 +298,6 @@ export default function AdminPanelView({
 
   useEffect(() => {
     const unsub = subscribeToAppConfig(config => {
-      setIsChatEnabled(config.isChatEnabled);
       if (config.supportInfo) {
         setSupportInfo(config.supportInfo);
       }
@@ -320,13 +317,6 @@ export default function AdminPanelView({
     return () => unsub();
   }, [activeTenantIdResolved]);
 
-  const handleToggleChat = async () => {
-    const newState = !isChatEnabled;
-    setIsChatEnabled(newState);
-    await updateAppConfig(newState, activeTenantIdResolved);
-    setFeedbackMsg(`Chat feature ${newState ? 'enabled' : 'disabled'} successfully.`);
-    setTimeout(() => setFeedbackMsg(''), 3000);
-  };
 
   const handleToggleCertificates = async (newVal?: boolean) => {
     const nextVal = newVal !== undefined ? newVal : !isCertificatesEnabled;
@@ -4110,31 +4100,6 @@ export default function AdminPanelView({
                   </div>
                 </div>
 
-                {/* Chat Feature Toggle */}
-                <div
-                  className="bg-[var(--nb-surface)] rounded-lg p-5"
-                  style={{ border: '2px solid var(--nb-ink)', boxShadow: 'var(--shadow-hard-sm)' }}
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="nb-headline text-sm text-[var(--nb-content)] mb-1">Global Chat System</h4>
-                      <p className="text-xs text-[var(--nb-secondary)]">Enable or disable the peer-to-peer messaging page for all users.</p>
-                    </div>
-
-                    <button
-                      onClick={handleToggleChat}
-                      className={`relative inline-flex h-7 w-12 items-center rounded transition-colors cursor-pointer ${isChatEnabled ? 'bg-emerald-500' : 'bg-[var(--nb-surface-accent)]'
-                        }`}
-                      style={{ border: '1.5px solid var(--nb-ink)' }}
-                    >
-                      <span
-                        className={`inline-block h-4 w-4 transform rounded bg-white transition-transform ${isChatEnabled ? 'translate-x-6' : 'translate-x-1'
-                          }`}
-                        style={{ border: '1px solid var(--nb-ink)' }}
-                      />
-                    </button>
-                  </div>
-                </div>
 
                 {/* E-Certificate Feature Toggle & Template Designer */}
                 <div
@@ -4341,7 +4306,7 @@ export default function AdminPanelView({
                       </div>
                       <h4 className="nb-headline text-sm text-[var(--nb-content)] mb-1">Reset Association • Start New Academic Year</h4>
                       <p className="text-xs text-[var(--nb-secondary)] leading-relaxed">
-                        Permanently wipe all past student accounts, events, registrations, certificates, event winners, photo albums, and chat logs across the entire database to begin a completely clean new association term.
+                        Permanently wipe all past student accounts, events, registrations, certificates, event winners, and photo albums across the entire database to begin a completely clean new association term.
                       </p>
                     </div>
 

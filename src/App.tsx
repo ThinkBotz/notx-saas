@@ -12,13 +12,12 @@ import {
   HelpCircle,
   Loader2,
   Cpu,
-  MessageSquare, RefreshCw, AlertTriangle
+  RefreshCw, AlertTriangle
 } from 'lucide-react';
 
 import { onSnapshot, collection, doc, query, where } from 'firebase/firestore';
-import { ref, onValue } from 'firebase/database';
-import { db, rtdb } from './firebase';
-import { UserProfile, DepartmentEvent, EventRegistration, Album, Announcement, UserInvitation, ChatRoom, AppConfig, SupportInfo, DEFAULT_SUPPORT_INFO, AppBranding, DEFAULT_BRANDING, Tenant, SUPER_ADMIN_EMAILS } from './types';
+import { db } from './firebase';
+import { UserProfile, DepartmentEvent, EventRegistration, Album, Announcement, AppConfig, SupportInfo, DEFAULT_SUPPORT_INFO, AppBranding, DEFAULT_BRANDING, Tenant, SUPER_ADMIN_EMAILS } from './types';
 import BrandLogo, { ACCENT_THEMES, getCssAccent, getCssAccentFg } from './components/BrandLogo';
 import { resolveTenantTheme, applyTenantTheme } from './utils/themePresets';
 import { 
@@ -28,7 +27,6 @@ import {
   subscribeToRegistrations,
   fetchAlbums, 
   fetchAnnouncements, 
-  fetchReceivedInvitations,
   getAppConfig,
   seedDatabaseIfEmpty,
   getTenant,
@@ -50,7 +48,7 @@ const ProfileView = React.lazy(() => import('./components/ProfileView'));
 const AdminPanelView = React.lazy(() => import('./components/AdminPanelView'));
 const MembersView = React.lazy(() => import('./components/MembersView'));
 const ContactView = React.lazy(() => import('./components/ContactView'));
-const MessagesView = React.lazy(() => import('./components/MessagesView'));
+
 
 const ViewLoadingFallback = () => (
   <div className="flex-1 flex flex-col items-center justify-center p-8 min-h-[280px] gap-3">
@@ -239,8 +237,6 @@ export default function App() {
   const [registrations, setRegistrations] = useState<EventRegistration[]>([]);
   const [albums, setAlbums] = useState<Album[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
-  const [receivedInvitations, setReceivedInvitations] = useState<UserInvitation[]>([]);
-  const [unreadChatsCount, setUnreadChatsCount] = useState(0);
   
   // App states
   const [isBooting, setIsBooting] = useState(true);
@@ -249,9 +245,7 @@ export default function App() {
   const [showMembersModal, setShowMembersModal] = useState(false);
   const [showContactModal, setShowContactModal] = useState(false);
   const [showAdminModal, setShowAdminModal] = useState(false);
-  const [messageTargetRoll, setMessageTargetRoll] = useState<string | null>(null);
   const [appConfig, setAppConfig] = useState<AppConfig>({ 
-    isChatEnabled: false,
     supportInfo: DEFAULT_SUPPORT_INFO,
     branding: DEFAULT_BRANDING
   });
@@ -415,52 +409,19 @@ export default function App() {
     return () => unsubscribeRegistrations();
   }, [activeTenantId]);
 
-  useEffect(() => {
-    if (!currentUser?.rollNumber) return;
-    const userRoll = currentUser.rollNumber.trim().toUpperCase();
-    const chatsPath = activeTenantId ? `chats/${activeTenantId.trim().toLowerCase()}` : 'chats';
-    const chatsRef = ref(rtdb, chatsPath);
 
-    const unsubscribe = onValue(chatsRef, (snapshot) => {
-      let unread = 0;
-      const val = snapshot.val() || {};
-      Object.values(val).forEach((roomAny: any) => {
-        const room = roomAny as {
-          participants?: string[];
-          messages?: Record<string, UserInvitation> | UserInvitation[];
-        };
-        const participants = Array.isArray(room.participants) ? room.participants : [];
-        if (!participants.some(p => p.toUpperCase() === userRoll)) return;
-
-        let rawMsgs: UserInvitation[] = [];
-        if (Array.isArray(room.messages)) {
-          rawMsgs = room.messages;
-        } else if (room.messages && typeof room.messages === 'object') {
-          rawMsgs = Object.values(room.messages);
-        }
-        unread += rawMsgs.filter(m => m.recipientRoll?.toUpperCase() === userRoll && m.type === 'chat' && !m.isRead).length;
-      });
-      setUnreadChatsCount(unread);
-    });
-    return () => unsubscribe();
-  }, [currentUser?.rollNumber, activeTenantId]);
 
   const refreshAllData = async (targetTenantId?: string) => {
     const tId = targetTenantId || activeTenantId;
     try {
       setIsDataLoading(true);
       
-      const invitesPromise = (currentUser && currentUser.rollNumber) 
-        ? fetchReceivedInvitations(currentUser.rollNumber, tId) 
-        : Promise.resolve([]);
-
-      const [u, e, r, g, a, invites, config, tenantData] = await Promise.all([
+      const [u, e, r, g, a, config, tenantData] = await Promise.all([
         fetchUsers(tId),
         fetchEvents(tId),
         fetchRegistrations(tId),
         fetchAlbums(tId),
         fetchAnnouncements(tId),
-        invitesPromise,
         getAppConfig(tId),
         getTenant(tId)
       ]);
@@ -469,7 +430,6 @@ export default function App() {
       setRegistrations(r);
       setAlbums(g);
       setAnnouncements(a);
-      setReceivedInvitations(invites || []);
       
       if (tenantData) {
         setActiveTenant(tenantData);
@@ -744,31 +704,7 @@ export default function App() {
               />
             )}
 
-            {activeTab === 'messages' && (
-              appConfig.isChatEnabled ? (
-                <MessagesView
-                  user={currentUser}
-                  allUsers={allUsers}
-                  initialTargetRoll={messageTargetRoll}
-                  onTargetHandled={() => setMessageTargetRoll(null)}
-                  activeTenantId={activeTenantId}
-                  activeTenant={activeTenant}
-                />
-              ) : (
-                <div className="flex-1 flex flex-col items-center justify-center p-8 text-center gap-4">
-                  <div className="nb-card-tinted w-16 h-16 flex items-center justify-center">
-                    <MessageSquare className="w-8 h-8" style={{ color: 'var(--nb-tertiary)' }} />
-                  </div>
-                  <h3 className="nb-headline text-2xl" style={{ color: 'var(--nb-content)' }}>Chat Disabled</h3>
-                  <p className="nb-body max-w-xs" style={{ color: 'var(--nb-secondary)' }}>
-                    The peer-to-peer messaging system has been temporarily disabled by the administration.
-                  </p>
-                  <button onClick={() => setActiveTab('home')} className="nb-btn">
-                    Return Home
-                  </button>
-                </div>
-              )
-            )}
+
 
             {activeTab === 'profile' && (
               <div className="flex-grow flex flex-col min-h-0 overflow-hidden">
@@ -806,9 +742,6 @@ export default function App() {
               setActiveTab(tabId);
               setSelectedEvent(null);
             }}
-            isChatEnabled={false}
-            unreadCount={unreadChatsCount}
-            pendingInvitesCount={receivedInvitations.filter(i => i.status === 'Pending').length}
             isOffline={!isOnline}
           />
 

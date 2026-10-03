@@ -128,16 +128,6 @@ service cloud.firestore {
       allow write: if isSuperAdmin() || isAuthenticated();
     }
 
-    // --- 10. Peer & Team Invitations ---
-    match /invitations/{invitationId} {
-      allow read, write: if isAuthenticated();
-    }
-
-    // --- 11. Peer Chats ---
-    match /chats/{chatId} {
-      allow read, write: if isAuthenticated();
-    }
-
     // --- 12. Universal Platform Settings (Developer Profiles & System Config) ---
     match /platformSettings/{settingId} {
       allow read: if true;

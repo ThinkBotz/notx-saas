@@ -124,31 +124,6 @@ export interface Announcement {
 }
 
 
-export interface UserInvitation {
-  tenantId?: string;
-  invitationId: string;
-  senderUid: string;
-  senderName: string;
-  senderRoll: string;
-  recipientUid: string;
-  recipientRoll: string;
-  recipientName: string;
-  message: string;
-  status: 'Pending' | 'Accepted' | 'Declined';
-  createdAt: string;
-  type?: 'invite' | 'chat';
-  isRead?: boolean;
-}
-
-export interface ChatRoom {
-  tenantId?: string;
-  chatId: string;
-  participants: string[];
-  messages: UserInvitation[];
-  lastMessageAt: string;
-  typing?: string[]; // Array of roll numbers currently typing
-}
-
 export interface SupportInfo {
   title: string;
   subtitle: string;
@@ -317,7 +292,6 @@ export const DEFAULT_BRANDING: AppBranding = {
 export interface AppConfig {
   configId?: string;
   tenantId?: string;
-  isChatEnabled: boolean;
   isCertificatesEnabled?: boolean;
   certificateTemplate?: CertificateTemplate;
   supportInfo?: SupportInfo;
@@ -570,7 +544,7 @@ export interface DeletedBackup {
   backupId: string;
   entityType: 'event' | 'event_cascade' | 'registration' | 'announcement' | 
               'album' | 'certificate' | 'user' | 'event_winner' | 
-              'chat' | 'association_reset' | string;
+              'association_reset' | string;
   entityId: string;
   entityName?: string;
   originalCollection?: string;

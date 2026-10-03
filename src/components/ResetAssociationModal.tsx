@@ -482,7 +482,7 @@ export default function ResetAssociationModal({
                     <li>All Events, Workshops & Hackathons are deleted</li>
                     <li>All Registration rosters & Attendance logs are deleted</li>
                     <li>All Issued E-Certificates & Wall of Champions records are cleared</li>
-                    <li>All Photo albums, announcements & chats are cleared</li>
+                    <li>All Photo albums & announcements are cleared</li>
                   </ul>
                   <div 
                     className="text-[10px] text-emerald-700 font-bold bg-white p-2 rounded"

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, Calendar, Image as ImageIcon, Volume2, MessageSquare, User, WifiOff } from 'lucide-react';
+import { Home, Calendar, Image as ImageIcon, Volume2, User, WifiOff } from 'lucide-react';
 import './FloatingDockNav.css';
 
 export interface NavItemConfig {
@@ -13,9 +13,6 @@ export interface NavItemConfig {
 export interface FloatingDockNavProps {
   activeTab: string;
   onTabChange: (tabId: string) => void;
-  isChatEnabled?: boolean;
-  unreadCount?: number;
-  pendingInvitesCount?: number;
   isOffline?: boolean;
   className?: string;
 }
@@ -23,9 +20,6 @@ export interface FloatingDockNavProps {
 export const FloatingDockNav: React.FC<FloatingDockNavProps> = ({
   activeTab,
   onTabChange,
-  isChatEnabled = true,
-  unreadCount = 0,
-  pendingInvitesCount = 0,
   isOffline = false,
   className = ''
 }) => {
@@ -50,17 +44,6 @@ export const FloatingDockNav: React.FC<FloatingDockNavProps> = ({
       label: 'Bulletin',
       icon: Volume2
     },
-    ...(isChatEnabled
-      ? [
-          {
-            id: 'messages',
-            label: 'Messages',
-            icon: MessageSquare,
-            badge: pendingInvitesCount > 0 ? true : unreadCount > 0 ? (unreadCount > 9 ? '9+' : unreadCount) : undefined,
-            isPing: pendingInvitesCount > 0
-          }
-        ]
-      : []),
     {
       id: 'profile',
       label: 'Profile',
