@@ -1231,69 +1231,87 @@ export default function SuperAdminDashboard({
           </div>
         )}
 
-        {/* ── 4. UNIFIED CONTROL BAR: Tabs, Search & Filters ── */}
-        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 p-2 bg-[var(--nb-surface)] rounded-xl border-2 border-[var(--nb-ink)] shadow-[3px_3px_0_var(--nb-ink)]">
-          {/* Main Navigation Tabs */}
+        {/* ── 4A. MASTER NAVIGATION TABS COMMAND DECK ── */}
+        <div className="bg-[var(--nb-surface)] rounded-xl border-2 border-[var(--nb-ink)] shadow-[3px_3px_0_var(--nb-ink)] p-1.5 sm:p-2">
           <div className="flex items-center gap-1.5 p-1 bg-[var(--nb-surface-accent)] rounded-lg border border-[var(--nb-ink)] overflow-x-auto scrollbar-none">
             <button
               type="button"
               onClick={() => setActiveMainTab('tenants')}
-              className={`px-3 py-1.5 rounded-md text-xs font-mono font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
+              className={`px-3 py-2 rounded-md text-xs font-mono font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
                 activeMainTab === 'tenants'
-                  ? 'bg-[var(--nb-accent)] text-[var(--nb-bg)] shadow-[1.5px_1.5px_0_var(--nb-ink)] font-black'
-                  : 'text-[var(--nb-secondary)] hover:text-[var(--nb-content)]'
+                  ? 'bg-[var(--nb-accent)] text-[var(--nb-bg)] shadow-[2px_2px_0_var(--nb-ink)] font-black'
+                  : 'text-[var(--nb-secondary)] hover:text-[var(--nb-content)] hover:bg-[var(--nb-surface)]/60'
               }`}
             >
-              <Building2 className="w-3.5 h-3.5" />
-              <span>Tenants Fleet ({tenants.length})</span>
+              <Building2 className="w-4 h-4 shrink-0" />
+              <span>Tenants Fleet</span>
+              <span className={`px-1.5 py-0.2 rounded text-[10px] font-mono ${activeMainTab === 'tenants' ? 'bg-black/20 text-white' : 'bg-[var(--nb-surface)] text-[var(--nb-secondary)] border border-[var(--nb-ink)]/20'}`}>
+                {tenants.length}
+              </span>
             </button>
+
             <button
               type="button"
               onClick={() => setActiveMainTab('developers')}
-              className={`px-3 py-1.5 rounded-md text-xs font-mono font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
+              className={`px-3 py-2 rounded-md text-xs font-mono font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
                 activeMainTab === 'developers'
-                  ? 'bg-amber-400 text-neutral-950 shadow-[1.5px_1.5px_0_var(--nb-ink)] font-black'
-                  : 'text-[var(--nb-secondary)] hover:text-amber-500'
+                  ? 'bg-amber-400 text-neutral-950 shadow-[2px_2px_0_var(--nb-ink)] font-black'
+                  : 'text-[var(--nb-secondary)] hover:text-amber-500 hover:bg-[var(--nb-surface)]/60'
               }`}
             >
-              <Code2 className="w-3.5 h-3.5" />
-              <span>Platform Builders ({platformDevConfig.members?.length || 5})</span>
+              <Code2 className="w-4 h-4 shrink-0" />
+              <span>Platform Builders</span>
+              <span className={`px-1.5 py-0.2 rounded text-[10px] font-mono ${activeMainTab === 'developers' ? 'bg-black/20 text-neutral-950' : 'bg-[var(--nb-surface)] text-[var(--nb-secondary)] border border-[var(--nb-ink)]/20'}`}>
+                {platformDevConfig.members?.length || 5}
+              </span>
             </button>
+
             <button
               type="button"
               onClick={() => setActiveMainTab('audit')}
-              className={`px-3 py-1.5 rounded-md text-xs font-mono font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
+              className={`px-3 py-2 rounded-md text-xs font-mono font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
                 activeMainTab === 'audit'
-                  ? 'bg-indigo-600 text-white shadow-[1.5px_1.5px_0_var(--nb-ink)] font-black'
-                  : 'text-[var(--nb-secondary)] hover:text-indigo-500'
+                  ? 'bg-indigo-600 text-white shadow-[2px_2px_0_var(--nb-ink)] font-black'
+                  : 'text-[var(--nb-secondary)] hover:text-indigo-500 hover:bg-[var(--nb-surface)]/60'
               }`}
             >
-              <History className="w-3.5 h-3.5" />
-              <span>Audit Trail ({auditLogs.length})</span>
+              <History className="w-4 h-4 shrink-0" />
+              <span>Audit Trail</span>
+              <span className={`px-1.5 py-0.2 rounded text-[10px] font-mono ${activeMainTab === 'audit' ? 'bg-black/25 text-white' : 'bg-[var(--nb-surface)] text-[var(--nb-secondary)] border border-[var(--nb-ink)]/20'}`}>
+                {auditLogs.length}
+              </span>
             </button>
+
             <button
               type="button"
               onClick={() => setActiveMainTab('vault')}
-              className={`px-3 py-1.5 rounded-md text-xs font-mono font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
+              className={`px-3 py-2 rounded-md text-xs font-mono font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
                 activeMainTab === 'vault'
-                  ? 'bg-rose-500 text-white shadow-[1.5px_1.5px_0_var(--nb-ink)] font-black'
-                  : 'text-[var(--nb-secondary)] hover:text-rose-500'
+                  ? 'bg-rose-500 text-white shadow-[2px_2px_0_var(--nb-ink)] font-black'
+                  : 'text-[var(--nb-secondary)] hover:text-rose-500 hover:bg-[var(--nb-surface)]/60'
               }`}
             >
-              <Archive className="w-3.5 h-3.5" />
-              <span>Deleted Vault ({deletedBackups.length})</span>
+              <Archive className="w-4 h-4 shrink-0" />
+              <span>Deleted Vault</span>
+              <span className={`px-1.5 py-0.2 rounded text-[10px] font-mono ${activeMainTab === 'vault' ? 'bg-black/25 text-white' : 'bg-[var(--nb-surface)] text-[var(--nb-secondary)] border border-[var(--nb-ink)]/20'}`}>
+                {deletedBackups.length}
+              </span>
             </button>
+
             <button
               type="button"
               onClick={() => setActiveMainTab('tickets')}
-              className={`px-3 py-1.5 rounded-md text-xs font-mono font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 shrink-0 relative ${
+              className={`px-3 py-2 rounded-md text-xs font-mono font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 shrink-0 relative ${
                 activeMainTab === 'tickets'
-                  ? 'bg-emerald-500 text-neutral-950 shadow-[1.5px_1.5px_0_var(--nb-ink)] font-black'
-                  : 'text-[var(--nb-secondary)] hover:text-emerald-500'
+                  ? 'bg-emerald-500 text-neutral-950 shadow-[2px_2px_0_var(--nb-ink)] font-black'
+                  : 'text-[var(--nb-secondary)] hover:text-emerald-500 hover:bg-[var(--nb-surface)]/60'
               }`}
             >
-              <MessageSquare className="w-3.5 h-3.5" />
-              <span>Support Tickets ({tickets.length})</span>
+              <MessageSquare className="w-4 h-4 shrink-0" />
+              <span>Support Tickets</span>
+              <span className={`px-1.5 py-0.2 rounded text-[10px] font-mono ${activeMainTab === 'tickets' ? 'bg-black/20 text-neutral-950' : 'bg-[var(--nb-surface)] text-[var(--nb-secondary)] border border-[var(--nb-ink)]/20'}`}>
+                {tickets.length}
+              </span>
               {openTicketsCount > 0 && (
                 <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-mono font-black ${
                   activeMainTab === 'tickets' ? 'bg-neutral-900 text-white' : 'bg-rose-500 text-white animate-pulse'
@@ -1302,17 +1320,21 @@ export default function SuperAdminDashboard({
                 </span>
               )}
             </button>
+
             <button
               type="button"
               onClick={() => setActiveMainTab('crashes')}
-              className={`px-3 py-1.5 rounded-md text-xs font-mono font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 shrink-0 relative ${
+              className={`px-3 py-2 rounded-md text-xs font-mono font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 shrink-0 relative ${
                 activeMainTab === 'crashes'
-                  ? 'bg-rose-600 text-white shadow-[1.5px_1.5px_0_var(--nb-ink)] font-black'
-                  : 'text-[var(--nb-secondary)] hover:text-rose-500'
+                  ? 'bg-rose-600 text-white shadow-[2px_2px_0_var(--nb-ink)] font-black'
+                  : 'text-[var(--nb-secondary)] hover:text-rose-500 hover:bg-[var(--nb-surface)]/60'
               }`}
             >
-              <Flame className="w-3.5 h-3.5" />
-              <span>Crash Telemetry ({systemLogs.length})</span>
+              <Flame className="w-4 h-4 shrink-0" />
+              <span>Crash Telemetry</span>
+              <span className={`px-1.5 py-0.2 rounded text-[10px] font-mono ${activeMainTab === 'crashes' ? 'bg-black/25 text-white' : 'bg-[var(--nb-surface)] text-[var(--nb-secondary)] border border-[var(--nb-ink)]/20'}`}>
+                {systemLogs.length}
+              </span>
               {unresolvedCrashesCount > 0 && (
                 <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-mono font-black ${
                   activeMainTab === 'crashes' ? 'bg-neutral-900 text-rose-400' : 'bg-rose-500 text-white animate-pulse'
@@ -1322,315 +1344,318 @@ export default function SuperAdminDashboard({
               )}
             </button>
           </div>
-
-
-          {/* Search, Filter & Layout cluster (Applicable on Tenants Tab) */}
-          {activeMainTab === 'tenants' && (
-            <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
-              {/* Search input */}
-              <div className="relative flex-1 sm:w-64">
-                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--nb-secondary)] pointer-events-none" />
-                <input
-                  type="text"
-                  placeholder="Search department, slug, admin..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-8 pr-7 py-1.5 text-xs bg-[var(--nb-surface-accent)] rounded-md border border-[var(--nb-ink)] text-[var(--nb-content)] placeholder:text-[var(--nb-secondary)] outline-none focus:border-[var(--nb-accent)] font-medium"
-                />
-                {searchQuery && (
-                  <button 
-                    onClick={() => setSearchQuery('')}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--nb-secondary)] hover:text-[var(--nb-content)]"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                )}
-              </div>
-
-              {/* Status Filter */}
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as any)}
-                className="py-1.5 px-2.5 text-xs font-mono font-bold uppercase bg-[var(--nb-surface-accent)] rounded-md border border-[var(--nb-ink)] text-[var(--nb-content)] outline-none cursor-pointer"
-              >
-                <option value="all">All Statuses ({tenants.length})</option>
-                <option value="active">Active Only ({kpiMetrics.activeTenants})</option>
-                <option value="inactive">Inactive Only ({kpiMetrics.inactiveTenants})</option>
-              </select>
-
-              {/* View Layout Toggle */}
-              <div className="flex items-center border border-[var(--nb-ink)] rounded-md overflow-hidden shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setViewMode('grid')}
-                  className={`p-1.5 cursor-pointer transition-colors ${
-                    viewMode === 'grid' 
-                      ? 'bg-[var(--nb-accent)] text-[var(--nb-bg)]' 
-                      : 'bg-[var(--nb-surface-accent)] text-[var(--nb-secondary)]'
-                  }`}
-                  title="Grid Layout"
-                >
-                  <LayoutGrid className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setViewMode('table')}
-                  className={`p-1.5 cursor-pointer transition-colors border-l border-[var(--nb-ink)] ${
-                    viewMode === 'table' 
-                      ? 'bg-[var(--nb-accent)] text-[var(--nb-bg)]' 
-                      : 'bg-[var(--nb-surface-accent)] text-[var(--nb-secondary)]'
-                  }`}
-                  title="Compact Table Layout"
-                >
-                  <List className="w-3.5 h-3.5" />
-                </button>
-              </div>
-
-              {/* Refresh Stats Button */}
-              <button
-                type="button"
-                onClick={loadTenantStats}
-                disabled={statsLoading}
-                className="p-1.5 rounded-md border border-[var(--nb-ink)] bg-[var(--nb-surface-accent)] hover:bg-[var(--nb-surface)] text-[var(--nb-content)] cursor-pointer disabled:opacity-50 shrink-0"
-                title="Refresh Per-Tenant Metrics"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${statsLoading ? 'animate-spin' : ''}`} />
-              </button>
-            </div>
-          )}
-
-          {/* Audit Trail Filter Cluster */}
-          {activeMainTab === 'audit' && (
-            <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
-              {/* Search Audit Logs */}
-              <div className="relative flex-1 sm:w-60">
-                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--nb-secondary)] pointer-events-none" />
-                <input
-                  type="text"
-                  placeholder="Filter actor, action, details..."
-                  value={auditSearch}
-                  onChange={(e) => setAuditSearch(e.target.value)}
-                  className="w-full pl-8 pr-7 py-1.5 text-xs bg-[var(--nb-surface-accent)] rounded-md border border-[var(--nb-ink)] text-[var(--nb-content)] placeholder:text-[var(--nb-secondary)] outline-none focus:border-indigo-500 font-medium"
-                />
-                {auditSearch && (
-                  <button 
-                    onClick={() => setAuditSearch('')}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--nb-secondary)] hover:text-[var(--nb-content)]"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                )}
-              </div>
-
-              {/* Tenant Filter */}
-              <select
-                value={auditTenantFilter}
-                onChange={(e) => setAuditTenantFilter(e.target.value)}
-                className="py-1.5 px-2.5 text-xs font-mono font-bold uppercase bg-[var(--nb-surface-accent)] rounded-md border border-[var(--nb-ink)] text-[var(--nb-content)] outline-none cursor-pointer"
-              >
-                <option value="all">All Tenants</option>
-                {tenants.map(t => (
-                  <option key={t.tenantId} value={t.tenantId}>{t.shortCode || t.name}</option>
-                ))}
-              </select>
-
-              {/* Severity Filter */}
-              <select
-                value={auditSeverityFilter}
-                onChange={(e) => setAuditSeverityFilter(e.target.value as any)}
-                className="py-1.5 px-2.5 text-xs font-mono font-bold uppercase bg-[var(--nb-surface-accent)] rounded-md border border-[var(--nb-ink)] text-[var(--nb-content)] outline-none cursor-pointer"
-              >
-                <option value="all">All Severities</option>
-                <option value="critical">🔴 Critical ({auditMetrics.critical})</option>
-                <option value="warning">🟡 Warning ({auditMetrics.warning})</option>
-                <option value="info">🟢 Info ({auditMetrics.info})</option>
-              </select>
-
-              {/* Category Filter */}
-              <select
-                value={auditCategoryFilter}
-                onChange={(e) => setAuditCategoryFilter(e.target.value)}
-                className="py-1.5 px-2.5 text-xs font-mono font-bold uppercase bg-[var(--nb-surface-accent)] rounded-md border border-[var(--nb-ink)] text-[var(--nb-content)] outline-none cursor-pointer"
-              >
-                <option value="all">All Categories</option>
-                <option value="event">Events</option>
-                <option value="registration">Registrations</option>
-                <option value="certificate">Certificates</option>
-                <option value="winner">Winners</option>
-                <option value="announcement">Announcements</option>
-                <option value="album">Gallery</option>
-                <option value="tenant">Tenants</option>
-                <option value="backup">Vault</option>
-                <option value="system">System</option>
-              </select>
-
-              {/* Export CSV button */}
-              <button
-                type="button"
-                onClick={exportAuditLogsToCSV}
-                className="px-3 py-1.5 rounded-md border border-[var(--nb-ink)] bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-mono font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shrink-0 shadow-[1.5px_1.5px_0_var(--nb-ink)]"
-                title="Export Filtered Audit Trail to CSV"
-              >
-                <FileDown className="w-3.5 h-3.5" />
-                <span>Export CSV</span>
-              </button>
-            </div>
-          )}
-
-          {/* Deleted Items Vault Filter Cluster */}
-          {activeMainTab === 'vault' && (
-            <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
-              {/* Search Vault */}
-              <div className="relative flex-1 sm:w-60">
-                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--nb-secondary)] pointer-events-none" />
-                <input
-                  type="text"
-                  placeholder="Search deleted record, user, id..."
-                  value={vaultSearch}
-                  onChange={(e) => setVaultSearch(e.target.value)}
-                  className="w-full pl-8 pr-7 py-1.5 text-xs bg-[var(--nb-surface-accent)] rounded-md border border-[var(--nb-ink)] text-[var(--nb-content)] placeholder:text-[var(--nb-secondary)] outline-none focus:border-rose-500 font-medium"
-                />
-                {vaultSearch && (
-                  <button 
-                    onClick={() => setVaultSearch('')}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--nb-secondary)] hover:text-[var(--nb-content)]"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                )}
-              </div>
-
-              {/* Tenant Filter */}
-              <select
-                value={vaultTenantFilter}
-                onChange={(e) => setVaultTenantFilter(e.target.value)}
-                className="py-1.5 px-2.5 text-xs font-mono font-bold uppercase bg-[var(--nb-surface-accent)] rounded-md border border-[var(--nb-ink)] text-[var(--nb-content)] outline-none cursor-pointer"
-              >
-                <option value="all">All Tenants</option>
-                {tenants.map(t => (
-                  <option key={t.tenantId} value={t.tenantId}>{t.shortCode || t.name}</option>
-                ))}
-              </select>
-
-              {/* Entity Type Filter */}
-              <select
-                value={vaultTypeFilter}
-                onChange={(e) => setVaultTypeFilter(e.target.value)}
-                className="py-1.5 px-2.5 text-xs font-mono font-bold uppercase bg-[var(--nb-surface-accent)] rounded-md border border-[var(--nb-ink)] text-[var(--nb-content)] outline-none cursor-pointer"
-              >
-                <option value="all">All Types ({deletedBackups.length})</option>
-                <option value="event_cascade">Event (Cascading with Passes & Certs)</option>
-                <option value="event">Single Event</option>
-                <option value="registration">Registration / Pass</option>
-                <option value="certificate">Certificate</option>
-                <option value="event_winner">Winner</option>
-                <option value="announcement">Announcement</option>
-                <option value="album">Gallery Album</option>
-                <option value="association_reset">Association Term Reset</option>
-                <option value="tenant">Tenant Instance</option>
-              </select>
-            </div>
-          )}
-
-          {/* System Telemetry & Crash Filter Cluster */}
-          {activeMainTab === 'crashes' && (
-            <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
-              {/* Search input */}
-              <div className="relative flex-1 sm:w-60">
-                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--nb-secondary)] pointer-events-none" />
-                <input
-                  type="text"
-                  placeholder="Search error, message, URL, user..."
-                  value={logSearch}
-                  onChange={(e) => setLogSearch(e.target.value)}
-                  className="w-full pl-8 pr-7 py-1.5 text-xs bg-[var(--nb-surface-accent)] rounded-md border border-[var(--nb-ink)] text-[var(--nb-content)] placeholder:text-[var(--nb-secondary)] outline-none focus:border-rose-500 font-medium"
-                />
-                {logSearch && (
-                  <button 
-                    onClick={() => setLogSearch('')}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--nb-secondary)] hover:text-[var(--nb-content)]"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                )}
-              </div>
-
-              {/* Tenant Filter */}
-              <select
-                value={logTenantFilter}
-                onChange={(e) => setLogTenantFilter(e.target.value)}
-                className="py-1.5 px-2.5 text-xs font-mono font-bold uppercase bg-[var(--nb-surface-accent)] rounded-md border border-[var(--nb-ink)] text-[var(--nb-content)] outline-none cursor-pointer"
-              >
-                <option value="all">All Scopes</option>
-                <option value="global">Global / Pre-Auth</option>
-                {tenants.map(t => (
-                  <option key={t.tenantId} value={t.tenantId}>{t.shortCode || t.name}</option>
-                ))}
-              </select>
-
-              {/* Severity / Level Filter */}
-              <select
-                value={logLevelFilter}
-                onChange={(e) => setLogLevelFilter(e.target.value as any)}
-                className="py-1.5 px-2.5 text-xs font-mono font-bold uppercase bg-[var(--nb-surface-accent)] rounded-md border border-[var(--nb-ink)] text-[var(--nb-content)] outline-none cursor-pointer"
-              >
-                <option value="all">All Levels</option>
-                <option value="error">🔴 Error / Crash</option>
-                <option value="warn">🟡 Warning</option>
-                <option value="info">🔵 Informational</option>
-              </select>
-
-              {/* Category Filter */}
-              <select
-                value={logCategoryFilter}
-                onChange={(e) => setLogCategoryFilter(e.target.value)}
-                className="py-1.5 px-2.5 text-xs font-mono font-bold uppercase bg-[var(--nb-surface-accent)] rounded-md border border-[var(--nb-ink)] text-[var(--nb-content)] outline-none cursor-pointer"
-              >
-                <option value="all">All Categories</option>
-                <option value="react_crash">React Boundary Crashes</option>
-                <option value="unhandled_window_error">Window Unhandled</option>
-                <option value="unhandled_promise_rejection">Promise Rejections</option>
-                <option value="database">Database / Firestore</option>
-                <option value="auth">Authentication</option>
-                <option value="general">General Telemetry</option>
-              </select>
-
-              {/* Resolution Status Filter */}
-              <select
-                value={logStatusFilter}
-                onChange={(e) => setLogStatusFilter(e.target.value as any)}
-                className="py-1.5 px-2.5 text-xs font-mono font-bold uppercase bg-[var(--nb-surface-accent)] rounded-md border border-[var(--nb-ink)] text-[var(--nb-content)] outline-none cursor-pointer"
-              >
-                <option value="all">All Statuses</option>
-                <option value="unresolved">⚠️ Unresolved Only</option>
-                <option value="resolved">✅ Resolved Only</option>
-              </select>
-
-              {/* Diagnostic Test Ping */}
-              <button
-                type="button"
-                onClick={handleTriggerTestTelemetry}
-                className="px-2.5 py-1.5 rounded-md border border-[var(--nb-ink)] bg-amber-400 hover:bg-amber-300 text-neutral-950 text-xs font-mono font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer shrink-0 shadow-[1.5px_1.5px_0_var(--nb-ink)]"
-                title="Send a real-time diagnostic test telemetry log"
-              >
-                <Activity className="w-3.5 h-3.5" />
-                <span className="hidden xl:inline">Test Ping</span>
-              </button>
-
-              {/* Purge Old Logs */}
-              <button
-                type="button"
-                onClick={() => handlePurgeLogs(14)}
-                disabled={isPurgingLogs}
-                className="px-2.5 py-1.5 rounded-md border border-[var(--nb-ink)] bg-[var(--nb-surface-accent)] hover:bg-rose-500 hover:text-white text-xs font-mono font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer shrink-0 disabled:opacity-50"
-                title="Purge logs older than 14 days"
-              >
-                <Trash2 className={`w-3.5 h-3.5 ${isPurgingLogs ? 'animate-spin' : ''}`} />
-                <span className="hidden xl:inline">Purge &gt;14d</span>
-              </button>
-            </div>
-          )}
         </div>
+
+        {/* ── 4B. CONTEXTUAL FILTER & ACTION TOOLBAR (PER TAB) ── */}
+        {['tenants', 'audit', 'vault', 'crashes'].includes(activeMainTab) && (
+          <div className="bg-[var(--nb-surface)] rounded-xl border-2 border-[var(--nb-ink)] shadow-[3px_3px_0_var(--nb-ink)] p-2.5 sm:p-3">
+            {/* Tenants Filter Deck */}
+            {activeMainTab === 'tenants' && (
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+                <div className="relative flex-1 min-w-[200px]">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--nb-secondary)] pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder="Search department, slug code, admin email..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-9 pr-8 py-2 text-xs bg-[var(--nb-surface-accent)] rounded-lg border border-[var(--nb-ink)] text-[var(--nb-content)] placeholder:text-[var(--nb-secondary)] outline-none focus:border-[var(--nb-accent)] font-medium h-9.5"
+                  />
+                  {searchQuery && (
+                    <button 
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--nb-secondary)] hover:text-[var(--nb-content)] cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value as any)}
+                    className="h-9.5 py-1 px-3 text-xs font-mono font-bold uppercase bg-[var(--nb-surface-accent)] rounded-lg border border-[var(--nb-ink)] text-[var(--nb-content)] outline-none cursor-pointer flex-1 sm:flex-none"
+                  >
+                    <option value="all">All Statuses ({tenants.length})</option>
+                    <option value="active">Active Only ({kpiMetrics.activeTenants})</option>
+                    <option value="inactive">Inactive Only ({kpiMetrics.inactiveTenants})</option>
+                  </select>
+
+                  <div className="flex items-center border border-[var(--nb-ink)] rounded-lg overflow-hidden h-9.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setViewMode('grid')}
+                      className={`h-full px-3 cursor-pointer transition-colors flex items-center justify-center ${
+                        viewMode === 'grid' 
+                          ? 'bg-[var(--nb-accent)] text-[var(--nb-bg)] font-bold' 
+                          : 'bg-[var(--nb-surface-accent)] text-[var(--nb-secondary)]'
+                      }`}
+                      title="Grid Layout"
+                    >
+                      <LayoutGrid className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setViewMode('table')}
+                      className={`h-full px-3 cursor-pointer transition-colors border-l border-[var(--nb-ink)] flex items-center justify-center ${
+                        viewMode === 'table' 
+                          ? 'bg-[var(--nb-accent)] text-[var(--nb-bg)] font-bold' 
+                          : 'bg-[var(--nb-surface-accent)] text-[var(--nb-secondary)]'
+                      }`}
+                      title="Compact Table Layout"
+                    >
+                      <List className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={loadTenantStats}
+                    disabled={statsLoading}
+                    className="h-9.5 px-3 rounded-lg border border-[var(--nb-ink)] bg-[var(--nb-surface-accent)] hover:bg-[var(--nb-surface)] text-[var(--nb-content)] cursor-pointer disabled:opacity-50 shrink-0 flex items-center justify-center gap-1.5"
+                    title="Refresh Per-Tenant Metrics"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${statsLoading ? 'animate-spin' : ''}`} />
+                    <span className="text-xs font-mono font-bold hidden sm:inline">Sync</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Audit Trail Filter Deck */}
+            {activeMainTab === 'audit' && (
+              <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-2.5">
+                <div className="relative flex-1 min-w-[200px]">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--nb-secondary)] pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder="Filter actor, action, tenant, details..."
+                    value={auditSearch}
+                    onChange={(e) => setAuditSearch(e.target.value)}
+                    className="w-full pl-9 pr-8 py-2 text-xs bg-[var(--nb-surface-accent)] rounded-lg border border-[var(--nb-ink)] text-[var(--nb-content)] placeholder:text-[var(--nb-secondary)] outline-none focus:border-indigo-500 font-medium h-9.5"
+                  />
+                  {auditSearch && (
+                    <button 
+                      onClick={() => setAuditSearch('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--nb-secondary)] hover:text-[var(--nb-content)] cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 lg:flex items-center gap-2">
+                  <select
+                    value={auditTenantFilter}
+                    onChange={(e) => setAuditTenantFilter(e.target.value)}
+                    className="h-9.5 py-1 px-2.5 text-xs font-mono font-bold uppercase bg-[var(--nb-surface-accent)] rounded-lg border border-[var(--nb-ink)] text-[var(--nb-content)] outline-none cursor-pointer w-full lg:w-auto"
+                  >
+                    <option value="all">All Tenants</option>
+                    {tenants.map(t => (
+                      <option key={t.tenantId} value={t.tenantId}>{t.shortCode || t.name}</option>
+                    ))}
+                  </select>
+
+                  <select
+                    value={auditSeverityFilter}
+                    onChange={(e) => setAuditSeverityFilter(e.target.value as any)}
+                    className="h-9.5 py-1 px-2.5 text-xs font-mono font-bold uppercase bg-[var(--nb-surface-accent)] rounded-lg border border-[var(--nb-ink)] text-[var(--nb-content)] outline-none cursor-pointer w-full lg:w-auto"
+                  >
+                    <option value="all">All Severities</option>
+                    <option value="critical">🔴 Critical ({auditMetrics.critical})</option>
+                    <option value="warning">🟡 Warning ({auditMetrics.warning})</option>
+                    <option value="info">🟢 Info ({auditMetrics.info})</option>
+                  </select>
+
+                  <select
+                    value={auditCategoryFilter}
+                    onChange={(e) => setAuditCategoryFilter(e.target.value)}
+                    className="h-9.5 py-1 px-2.5 text-xs font-mono font-bold uppercase bg-[var(--nb-surface-accent)] rounded-lg border border-[var(--nb-ink)] text-[var(--nb-content)] outline-none cursor-pointer w-full lg:w-auto"
+                  >
+                    <option value="all">All Categories</option>
+                    <option value="event">Events</option>
+                    <option value="registration">Registrations</option>
+                    <option value="certificate">Certificates</option>
+                    <option value="winner">Winners</option>
+                    <option value="announcement">Announcements</option>
+                    <option value="album">Gallery</option>
+                    <option value="tenant">Tenants</option>
+                    <option value="backup">Vault</option>
+                    <option value="system">System</option>
+                  </select>
+
+                  <button
+                    type="button"
+                    onClick={exportAuditLogsToCSV}
+                    className="h-9.5 px-3 rounded-lg border border-[var(--nb-ink)] bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-mono font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer shadow-[1.5px_1.5px_0_var(--nb-ink)] col-span-2 sm:col-span-1 lg:w-auto"
+                    title="Export Filtered Audit Trail to CSV"
+                  >
+                    <FileDown className="w-3.5 h-3.5" />
+                    <span>Export CSV</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Deleted Vault Filter Deck */}
+            {activeMainTab === 'vault' && (
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+                <div className="relative flex-1 min-w-[200px]">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--nb-secondary)] pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder="Search deleted record title, user, backup ID..."
+                    value={vaultSearch}
+                    onChange={(e) => setVaultSearch(e.target.value)}
+                    className="w-full pl-9 pr-8 py-2 text-xs bg-[var(--nb-surface-accent)] rounded-lg border border-[var(--nb-ink)] text-[var(--nb-content)] placeholder:text-[var(--nb-secondary)] outline-none focus:border-rose-500 font-medium h-9.5"
+                  />
+                  {vaultSearch && (
+                    <button 
+                      onClick={() => setVaultSearch('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--nb-secondary)] hover:text-[var(--nb-content)] cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 sm:flex items-center gap-2">
+                  <select
+                    value={vaultTenantFilter}
+                    onChange={(e) => setVaultTenantFilter(e.target.value)}
+                    className="h-9.5 py-1 px-3 text-xs font-mono font-bold uppercase bg-[var(--nb-surface-accent)] rounded-lg border border-[var(--nb-ink)] text-[var(--nb-content)] outline-none cursor-pointer w-full sm:w-auto"
+                  >
+                    <option value="all">All Tenants</option>
+                    {tenants.map(t => (
+                      <option key={t.tenantId} value={t.tenantId}>{t.shortCode || t.name}</option>
+                    ))}
+                  </select>
+
+                  <select
+                    value={vaultTypeFilter}
+                    onChange={(e) => setVaultTypeFilter(e.target.value)}
+                    className="h-9.5 py-1 px-3 text-xs font-mono font-bold uppercase bg-[var(--nb-surface-accent)] rounded-lg border border-[var(--nb-ink)] text-[var(--nb-content)] outline-none cursor-pointer w-full sm:w-auto"
+                  >
+                    <option value="all">All Types ({deletedBackups.length})</option>
+                    <option value="event_cascade">Event (Cascading with Passes & Certs)</option>
+                    <option value="event">Single Event</option>
+                    <option value="registration">Registration / Pass</option>
+                    <option value="certificate">Certificate</option>
+                    <option value="event_winner">Winner</option>
+                    <option value="announcement">Announcement</option>
+                    <option value="album">Gallery Album</option>
+                    <option value="association_reset">Association Term Reset</option>
+                    <option value="tenant">Tenant Instance</option>
+                  </select>
+                </div>
+              </div>
+            )}
+
+            {/* Crash Telemetry Filter Deck */}
+            {activeMainTab === 'crashes' && (
+              <div className="space-y-2.5">
+                {/* Search Bar on Top */}
+                <div className="relative w-full">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--nb-secondary)] pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder="Search crash error, message, URL, affected user email..."
+                    value={logSearch}
+                    onChange={(e) => setLogSearch(e.target.value)}
+                    className="w-full pl-9 pr-8 py-2 text-xs bg-[var(--nb-surface-accent)] rounded-lg border border-[var(--nb-ink)] text-[var(--nb-content)] placeholder:text-[var(--nb-secondary)] outline-none focus:border-rose-500 font-medium h-9.5"
+                  />
+                  {logSearch && (
+                    <button 
+                      onClick={() => setLogSearch('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--nb-secondary)] hover:text-[var(--nb-content)] cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Filter Selects & Action Buttons Row */}
+                <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2">
+                  {/* Selects: 2-column on mobile, inline-flex on desktop */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 md:flex items-center gap-2 flex-1">
+                    <select
+                      value={logTenantFilter}
+                      onChange={(e) => setLogTenantFilter(e.target.value)}
+                      className="h-9 py-1 px-2.5 text-xs font-mono font-bold uppercase bg-[var(--nb-surface-accent)] rounded-lg border border-[var(--nb-ink)] text-[var(--nb-content)] outline-none cursor-pointer w-full md:w-auto"
+                    >
+                      <option value="all">All Scopes</option>
+                      <option value="global">Global / Pre-Auth</option>
+                      {tenants.map(t => (
+                        <option key={t.tenantId} value={t.tenantId}>{t.shortCode || t.name}</option>
+                      ))}
+                    </select>
+
+                    <select
+                      value={logLevelFilter}
+                      onChange={(e) => setLogLevelFilter(e.target.value as any)}
+                      className="h-9 py-1 px-2.5 text-xs font-mono font-bold uppercase bg-[var(--nb-surface-accent)] rounded-lg border border-[var(--nb-ink)] text-[var(--nb-content)] outline-none cursor-pointer w-full md:w-auto"
+                    >
+                      <option value="all">All Levels</option>
+                      <option value="error">🔴 Error / Crash</option>
+                      <option value="warn">🟡 Warning</option>
+                      <option value="info">🔵 Informational</option>
+                    </select>
+
+                    <select
+                      value={logCategoryFilter}
+                      onChange={(e) => setLogCategoryFilter(e.target.value)}
+                      className="h-9 py-1 px-2.5 text-xs font-mono font-bold uppercase bg-[var(--nb-surface-accent)] rounded-lg border border-[var(--nb-ink)] text-[var(--nb-content)] outline-none cursor-pointer w-full md:w-auto"
+                    >
+                      <option value="all">All Categories</option>
+                      <option value="react_crash">React Crashes</option>
+                      <option value="unhandled_window_error">Window Errors</option>
+                      <option value="unhandled_promise_rejection">Rejections</option>
+                      <option value="database">Database</option>
+                      <option value="auth">Auth</option>
+                      <option value="general">General</option>
+                    </select>
+
+                    <select
+                      value={logStatusFilter}
+                      onChange={(e) => setLogStatusFilter(e.target.value as any)}
+                      className="h-9 py-1 px-2.5 text-xs font-mono font-bold uppercase bg-[var(--nb-surface-accent)] rounded-lg border border-[var(--nb-ink)] text-[var(--nb-content)] outline-none cursor-pointer w-full md:w-auto"
+                    >
+                      <option value="all">All Statuses</option>
+                      <option value="unresolved">⚠️ Unresolved</option>
+                      <option value="resolved">✅ Resolved</option>
+                    </select>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={handleTriggerTestTelemetry}
+                      className="h-9 px-3 rounded-lg border border-[var(--nb-ink)] bg-amber-400 hover:bg-amber-300 text-neutral-950 text-xs font-mono font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer shadow-[1.5px_1.5px_0_var(--nb-ink)] flex-1 md:flex-none"
+                      title="Send a real-time diagnostic test telemetry log"
+                    >
+                      <Activity className="w-3.5 h-3.5" />
+                      <span>Test Ping</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handlePurgeLogs(14)}
+                      disabled={isPurgingLogs}
+                      className="h-9 px-3 rounded-lg border border-[var(--nb-ink)] bg-[var(--nb-surface-accent)] hover:bg-rose-500 hover:text-white text-xs font-mono font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 flex-1 md:flex-none"
+                      title="Purge logs older than 14 days"
+                    >
+                      <Trash2 className={`w-3.5 h-3.5 ${isPurgingLogs ? 'animate-spin' : ''}`} />
+                      <span>Purge &gt;14d</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
 
 
         {/* ── 5. TAB VIEW: TENANTS & ASSOCIATIONS FLEET ── */}
