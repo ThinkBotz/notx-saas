@@ -551,21 +551,7 @@ The `npm run test:concurrency` script performs stress testing:
 </td>
 <td width="33%" align="center">
 <br/>
-<b>SYED NASEER</b><br/>
-<code>24HM5A3305</code><br/>
-<b>Technical Strategist</b><br/>
-<sub>Led feature requirement specifications, workflow planning, coordinator permission structures & technical strategy.</sub><br/><br/>
-<a href="https://github.com">🐙 GitHub</a> • <a href="https://linkedin.com">💼 LinkedIn</a>
-<br/><br/>
-</td>
-<td width="33%" align="center">
-<br/>
-<b>K BHANU</b><br/>
-<code>24HM5A3302</code><br/>
-<b>Frontend Engineer</b><br/>
-<sub>Developed UI components, event registration cards, certificates modal & mobile navigation docks.</sub><br/><br/>
-<a href="https://github.com">🐙 GitHub</a> • <a href="https://linkedin.com">💼 LinkedIn</a>
-<br/><br/>
+
 </td>
 </tr>
 </table>
