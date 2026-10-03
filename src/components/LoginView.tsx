@@ -37,7 +37,9 @@ import {
   deleteUserProfile,
   fetchEvents,
   subscribeToEventWinners,
-  fetchUsers
+  fetchUsers,
+  subscribeToPlatformBranding,
+  DEFAULT_PLATFORM_BRANDING
 } from '../firebase';
 import { GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
 import { hashPassword, verifyPassword, recordUserActivity } from '../utils/auth';
@@ -66,6 +68,16 @@ export default function LoginView({
     const fromUrl = urlParams?.get('tenant') || urlParams?.get('t');
     return fromUrl || localStorage.getItem('notx_active_tenant') || activeTenantId || '';
   });
+
+  const [platformBranding, setPlatformBranding] = useState<AppBranding>(DEFAULT_PLATFORM_BRANDING);
+
+  // Subscribe to real-time master NOTX platform branding (controlled by Super Admin)
+  useEffect(() => {
+    const unsub = subscribeToPlatformBranding((brand) => {
+      setPlatformBranding(brand);
+    });
+    return () => unsub();
+  }, []);
 
   const [rollNumberInput, setRollNumberInput] = useState('');
   const [password, setPassword] = useState('');
@@ -147,12 +159,12 @@ export default function LoginView({
 
   const selectedTenant = tenants.find(t => t.tenantId === selectedTenantId) || tenants[0];
   const displayAppName = selectedTenant
-    ? (selectedTenant.branding?.appName || selectedTenant.name || 'NOTX')
-    : 'NOTX';
-  const activeBranding: AppBranding = selectedTenant?.branding
+    ? (selectedTenant.branding?.appName || selectedTenant.name || platformBranding.appName || 'NOTX')
+    : (platformBranding.appName || 'NOTX');
+  const activeTenantBranding: AppBranding = selectedTenant?.branding
     ? { ...selectedTenant.branding, appName: displayAppName }
-    : { ...DEFAULT_BRANDING, appName: 'NOTX', tagline: 'Connect' };
-  const currentTheme = resolveTenantTheme(activeBranding);
+    : { ...platformBranding, appName: displayAppName };
+  const currentTheme = resolveTenantTheme(activeTenantBranding);
 
   // Apply tenant theme to root CSS variables for dynamic live adaptation
   useEffect(() => {
@@ -698,20 +710,6 @@ export default function LoginView({
                 <Mail className="w-4 h-4 shrink-0 text-red-500" />
                 <span className="truncate">syedsame2244@gmail.com</span>
               </a>
-
-              {/* WhatsApp Button (Number hidden behind the button) */}
-              <a
-                href="https://wa.me/919951970441?text=Hello%20NOTX%20Support%2C%20I%20have%20an%20inquiry%20regarding%20the%20platform."
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center justify-start gap-2.5 px-3.5 py-2 rounded-lg border-2 border-[var(--nb-ink)] bg-[#25D366] text-slate-950 hover:bg-[#20ba59] font-mono text-xs font-black uppercase tracking-wide shadow-[3px_3px_0_var(--nb-ink)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all cursor-pointer"
-                title="Direct WhatsApp Chat with Support"
-              >
-                <svg className="w-4 h-4 fill-current shrink-0" viewBox="0 0 24 24">
-                  <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z" />
-                </svg>
-                <span>Chat on WhatsApp</span>
-              </a>
             </div>
           </div>
         </div>
@@ -757,12 +755,12 @@ export default function LoginView({
           <div className="relative z-10 flex items-center justify-between gap-3 w-full">
             <div className="flex items-center gap-3">
               <div className="p-1.5 rounded-lg bg-[var(--nb-surface)] border-2 border-[var(--nb-ink)] shadow-[2.5px_2.5px_0_var(--nb-ink)] flex-shrink-0">
-                <BrandLogo branding={activeBranding} size="md" />
+                <BrandLogo branding={platformBranding} size="md" />
               </div>
               <div>
                 <div className="flex items-center gap-1.5">
                   <span className="nb-pill-coral text-[9px] font-mono font-bold uppercase inline-block">
-                    DEPARTMENT PORTAL
+                    PLATFORM
                   </span>
                   {selectedTenant?.status === 'active' ? (
                     <span className="nb-pill-green text-[9px] font-mono font-bold text-black shadow-[1.5px_1.5px_0_var(--nb-ink)] inline-flex items-center gap-1">
@@ -779,7 +777,7 @@ export default function LoginView({
                   className="font-display text-xl tracking-wider font-black mt-0.5"
                   style={{ color: currentTheme.heroFg }}
                 >
-                  {displayAppName}
+                  {platformBranding.appName || 'NOTX'}
                 </p>
               </div>
             </div>
@@ -913,25 +911,21 @@ export default function LoginView({
           {/* Left: Brand + Tenant Identity */}
           <div className="flex items-center gap-3.5">
             <div className="p-1.5 rounded-lg bg-[var(--nb-surface)] border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)] flex-shrink-0">
-              <BrandLogo branding={activeBranding} size="sm" />
+              <BrandLogo branding={platformBranding} size="sm" />
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <span className="font-display text-lg tracking-wider font-black text-[var(--nb-content)]">
-                  {displayAppName}
+                  {platformBranding.appName || 'NOTX'}
                 </span>
-                {selectedTenant?.shortCode &&
-                  displayAppName.replace(/[\s\-_]+/g, '').toLowerCase() !== selectedTenant.shortCode.replace(/[\s\-_]+/g, '').toLowerCase() && (
-                    <span
-                      className="font-mono font-bold text-[10px] uppercase px-2 py-0.5 rounded border border-[var(--nb-ink)] shadow-[1px_1px_0_var(--nb-ink)]"
-                      style={{ background: currentTheme.subtleBg, color: '#111111' }}
-                    >
-                      {selectedTenant.shortCode}
-                    </span>
-                  )}
+                <span
+                  className="font-mono font-bold text-[10px] uppercase px-2 py-0.5 rounded border border-[var(--nb-ink)] shadow-[1px_1px_0_var(--nb-ink)] bg-emerald-400 text-neutral-950"
+                >
+                  MASTER OS
+                </span>
               </div>
               <p className="font-mono text-[10px] text-[var(--nb-secondary)] font-bold uppercase truncate max-w-xs">
-                {selectedTenant?.institution || selectedTenant?.branding?.institution || 'NOTX Platform'}
+                {platformBranding.institution || 'Academic SaaS Ecosystem'}
               </p>
             </div>
           </div>

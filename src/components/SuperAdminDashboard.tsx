@@ -59,7 +59,10 @@ import {
   Flame,
   Bug,
   CheckCheck,
-  AlertOctagon
+  AlertOctagon,
+  Palette,
+  Sliders,
+  Check
 } from 'lucide-react';
 import { 
   Tenant, 
@@ -76,7 +79,9 @@ import {
   TicketStatus,
   SystemLogEntry,
   SystemLogLevel,
-  SystemLogCategory
+  SystemLogCategory,
+  AppBranding,
+  DEFAULT_BRANDING
 } from '../types';
 import { 
   logger,
@@ -106,11 +111,15 @@ import {
   updateTicketStatus,
   markTicketRead,
   deleteSupportTicket,
-  DEFAULT_TENANT_ID
+  DEFAULT_TENANT_ID,
+  updatePlatformBranding,
+  subscribeToPlatformBranding,
+  DEFAULT_PLATFORM_BRANDING
 } from '../firebase';
 
 import { runSecurityAndTenantValidation, TestResult } from '../utils/testTenantSecurity';
-import BrandLogo from './BrandLogo';
+import BrandLogo, { BRAND_ICONS } from './BrandLogo';
+import ImageUploader from './ImageUploader';
 import { THEME_PRESETS, ThemePresetKey, TenantThemeConfig, resolveTenantTheme } from '../utils/themePresets';
 import ManagePlatformDevelopersModal from './ManagePlatformDevelopersModal';
 import DeleteTenantModal from './DeleteTenantModal';
@@ -150,7 +159,13 @@ export default function SuperAdminDashboard({
   const [statsLoading, setStatsLoading] = useState(false);
 
   // Navigation, Search & Filter controls
-  const [activeMainTab, setActiveMainTab] = useState<'tenants' | 'developers' | 'audit' | 'vault' | 'tickets' | 'crashes'>('tenants');
+  const [activeMainTab, setActiveMainTab] = useState<'tenants' | 'developers' | 'branding' | 'audit' | 'vault' | 'tickets' | 'crashes'>('tenants');
+
+  // Platform Master Branding (NOTX Global Identity)
+  const [platformBranding, setPlatformBranding] = useState<AppBranding>(DEFAULT_PLATFORM_BRANDING);
+  const [platformBrandingForm, setPlatformBrandingForm] = useState<AppBranding>(DEFAULT_PLATFORM_BRANDING);
+  const [isSavingBranding, setIsSavingBranding] = useState(false);
+  const [brandingSaveSuccess, setBrandingSaveSuccess] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
@@ -270,6 +285,31 @@ export default function SuperAdminDashboard({
     });
     return () => unsub();
   }, []);
+
+  // 2b. Subscribe to Global Master Platform Branding
+  useEffect(() => {
+    const unsub = subscribeToPlatformBranding((brand) => {
+      setPlatformBranding(brand);
+      setPlatformBrandingForm(brand);
+    });
+    return () => unsub();
+  }, []);
+
+  const handleSavePlatformBranding = async () => {
+    setIsSavingBranding(true);
+    setBrandingSaveSuccess(false);
+    try {
+      await updatePlatformBranding(platformBrandingForm);
+      setPlatformBranding(platformBrandingForm);
+      setBrandingSaveSuccess(true);
+      setTimeout(() => setBrandingSaveSuccess(false), 3000);
+    } catch (err: any) {
+      console.error('Error saving platform branding:', err);
+      alert('Failed to save platform branding: ' + (err.message || err));
+    } finally {
+      setIsSavingBranding(false);
+    }
+  };
 
   // 3. Subscribe to real-time Audit Trail
   useEffect(() => {
@@ -1268,6 +1308,19 @@ export default function SuperAdminDashboard({
 
             <button
               type="button"
+              onClick={() => setActiveMainTab('branding')}
+              className={`px-3 py-2 rounded-md text-xs font-mono font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
+                activeMainTab === 'branding'
+                  ? 'bg-amber-400 text-neutral-950 shadow-[2px_2px_0_var(--nb-ink)] font-black'
+                  : 'text-[var(--nb-secondary)] hover:text-amber-500 hover:bg-[var(--nb-surface)]/60'
+              }`}
+            >
+              <Palette className="w-4 h-4 shrink-0" />
+              <span>Platform Brand</span>
+            </button>
+
+            <button
+              type="button"
               onClick={() => setActiveMainTab('audit')}
               className={`px-3 py-2 rounded-md text-xs font-mono font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
                 activeMainTab === 'audit'
@@ -2213,6 +2266,316 @@ export default function SuperAdminDashboard({
                 <li><strong>Database Reset Protection:</strong> When department administrators execute an academic year database wipe, developer credentials are 100% immune from deletion.</li>
                 <li><strong>Strict Role Isolation:</strong> Department presidents and faculty coordinators cannot access, edit, or override these global developer credits.</li>
               </ul>
+            </div>
+          </div>
+        )}
+
+        {/* ── 7. TAB VIEW: PLATFORM MASTER BRANDING (NOTX GLOBAL IDENTITY) ── */}
+        {activeMainTab === 'branding' && (
+          <div className="space-y-6 animate-in fade-in duration-150">
+            {/* Header Banner */}
+            <div className="p-5 sm:p-6 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 text-neutral-950 flex flex-col md:flex-row md:items-center justify-between gap-4 border-[2.5px] border-[var(--nb-ink)] shadow-[4px_4px_0_var(--nb-ink)]">
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="nb-pill-coral text-[9px] sm:text-[10px] font-mono font-bold uppercase px-2 py-0.5 shadow-[1.5px_1.5px_0_#000]">
+                    SUPER ADMIN MASTER CONTROL
+                  </span>
+                  <span className="text-[11px] sm:text-xs font-mono font-bold">Universal Global Identity</span>
+                </div>
+                <h1 className="font-display font-black text-xl sm:text-2xl md:text-3xl tracking-tight text-neutral-950 flex items-center gap-2.5">
+                  <Palette className="w-7 h-7" />
+                  Platform Master Branding
+                </h1>
+                <p className="text-xs sm:text-sm font-medium text-neutral-900 max-w-2xl leading-relaxed">
+                  Configure the master NOTX identity displayed on the <strong>global Login page header, navigation bars, and platform footers</strong>. Individual onboarded department tenants configure their own departmental crests and themes inside their workspace.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleSavePlatformBranding}
+                  disabled={isSavingBranding}
+                  className="nb-btn px-5 py-2.5 text-xs font-black uppercase tracking-wider flex items-center gap-2 cursor-pointer bg-neutral-950 text-amber-400 hover:bg-neutral-800 shadow-[2.5px_2.5px_0_#000] disabled:opacity-60"
+                >
+                  {isSavingBranding ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : brandingSaveSuccess ? (
+                    <Check className="w-4 h-4 text-emerald-400" />
+                  ) : (
+                    <Save className="w-4 h-4" />
+                  )}
+                  <span>{isSavingBranding ? 'Saving...' : brandingSaveSuccess ? 'Saved Globally!' : 'Save Platform Brand'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Main Form + Live Preview 2-Column Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              {/* Form Controls (7 cols) */}
+              <div className="lg:col-span-7 space-y-5 bg-[var(--nb-surface)] p-5 sm:p-6 rounded-xl border-2 border-[var(--nb-ink)] shadow-[4px_4px_0_var(--nb-ink)]">
+                <h2 className="nb-headline text-base text-[var(--nb-content)] flex items-center gap-2 border-b border-[var(--nb-divider)] pb-3">
+                  <Sliders className="w-4 h-4 text-[var(--nb-accent)]" />
+                  Platform Configuration Fields
+                </h2>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Master App Name */}
+                  <div>
+                    <label className="block text-xs font-mono font-bold uppercase tracking-wider text-[var(--nb-content)] mb-1.5">
+                      Platform App Name
+                    </label>
+                    <input
+                      type="text"
+                      value={platformBrandingForm.appName}
+                      onChange={(e) => setPlatformBrandingForm(prev => ({ ...prev, appName: e.target.value }))}
+                      placeholder="e.g. NOTX"
+                      className="w-full px-3 py-2 text-xs bg-[var(--nb-surface-accent)] rounded-lg border border-[var(--nb-ink)] text-[var(--nb-content)] font-bold focus:border-[var(--nb-accent)] outline-none"
+                    />
+                    <p className="text-[10px] font-mono text-[var(--nb-secondary)] mt-1">
+                      Appears in top navbar, browser title, and login brand marks.
+                    </p>
+                  </div>
+
+                  {/* Platform Tagline */}
+                  <div>
+                    <label className="block text-xs font-mono font-bold uppercase tracking-wider text-[var(--nb-content)] mb-1.5">
+                      Platform Tagline
+                    </label>
+                    <input
+                      type="text"
+                      value={platformBrandingForm.tagline || ''}
+                      onChange={(e) => setPlatformBrandingForm(prev => ({ ...prev, tagline: e.target.value }))}
+                      placeholder="e.g. Connect"
+                      className="w-full px-3 py-2 text-xs bg-[var(--nb-surface-accent)] rounded-lg border border-[var(--nb-ink)] text-[var(--nb-content)] font-medium focus:border-[var(--nb-accent)] outline-none"
+                    />
+                    <p className="text-[10px] font-mono text-[var(--nb-secondary)] mt-1">
+                      Short secondary brand descriptor.
+                    </p>
+                  </div>
+
+                  {/* Subtitle */}
+                  <div>
+                    <label className="block text-xs font-mono font-bold uppercase tracking-wider text-[var(--nb-content)] mb-1.5">
+                      Platform Subtitle
+                    </label>
+                    <input
+                      type="text"
+                      value={platformBrandingForm.subtitle || ''}
+                      onChange={(e) => setPlatformBrandingForm(prev => ({ ...prev, subtitle: e.target.value }))}
+                      placeholder="e.g. Unified Multi-Tenant Academic OS"
+                      className="w-full px-3 py-2 text-xs bg-[var(--nb-surface-accent)] rounded-lg border border-[var(--nb-ink)] text-[var(--nb-content)] font-medium focus:border-[var(--nb-accent)] outline-none"
+                    />
+                  </div>
+
+                  {/* Institution / Ecosystem */}
+                  <div>
+                    <label className="block text-xs font-mono font-bold uppercase tracking-wider text-[var(--nb-content)] mb-1.5">
+                      Institution / Ecosystem
+                    </label>
+                    <input
+                      type="text"
+                      value={platformBrandingForm.institution || ''}
+                      onChange={(e) => setPlatformBrandingForm(prev => ({ ...prev, institution: e.target.value }))}
+                      placeholder="e.g. Academic SaaS Ecosystem"
+                      className="w-full px-3 py-2 text-xs bg-[var(--nb-surface-accent)] rounded-lg border border-[var(--nb-ink)] text-[var(--nb-content)] font-medium focus:border-[var(--nb-accent)] outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Logo Type Selector: Preset Icon vs Custom Image */}
+                <div className="space-y-3 pt-3 border-t border-[var(--nb-divider)]">
+                  <label className="block text-xs font-mono font-bold uppercase tracking-wider text-[var(--nb-content)]">
+                    Master Logo Style
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setPlatformBrandingForm(prev => ({ ...prev, logoType: 'preset' }))}
+                      className={`px-3 py-1.5 rounded-lg border text-xs font-mono font-bold uppercase cursor-pointer transition-all ${
+                        platformBrandingForm.logoType === 'preset'
+                          ? 'border-[var(--nb-ink)] bg-indigo-600 text-white shadow-[2px_2px_0_var(--nb-ink)]'
+                          : 'border-[var(--nb-divider)] bg-[var(--nb-surface-accent)] text-[var(--nb-secondary)]'
+                      }`}
+                    >
+                      Preset Icon
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPlatformBrandingForm(prev => ({ ...prev, logoType: 'image' }))}
+                      className={`px-3 py-1.5 rounded-lg border text-xs font-mono font-bold uppercase cursor-pointer transition-all ${
+                        platformBrandingForm.logoType === 'image'
+                          ? 'border-[var(--nb-ink)] bg-indigo-600 text-white shadow-[2px_2px_0_var(--nb-ink)]'
+                          : 'border-[var(--nb-divider)] bg-[var(--nb-surface-accent)] text-[var(--nb-secondary)]'
+                      }`}
+                    >
+                      Custom Logo Image / Cloudinary
+                    </button>
+                  </div>
+
+                  {platformBrandingForm.logoType === 'preset' ? (
+                    <div className="space-y-2 pt-1">
+                      <p className="text-[11px] font-mono text-[var(--nb-secondary)]">Choose Icon:</p>
+                      <div className="flex flex-wrap gap-2">
+                        {['Cpu', 'Zap', 'Sparkles', 'Terminal', 'Rocket', 'Layers', 'Bot', 'Atom', 'ShieldCheck', 'Radio', 'Trophy', 'Globe'].map(iconKey => {
+                          const IconComp = (BRAND_ICONS as any)[iconKey] || Cpu;
+                          const isSelected = platformBrandingForm.logoIcon === iconKey;
+                          return (
+                            <button
+                              key={iconKey}
+                              type="button"
+                              onClick={() => setPlatformBrandingForm(prev => ({ ...prev, logoIcon: iconKey }))}
+                              className={`p-2 rounded-lg border transition-all cursor-pointer flex items-center gap-1.5 ${
+                                isSelected
+                                  ? 'border-[var(--nb-ink)] bg-[var(--nb-accent)] text-white shadow-[2px_2px_0_var(--nb-ink)] scale-105'
+                                  : 'border-[var(--nb-divider)] bg-[var(--nb-surface-accent)] text-[var(--nb-content)] hover:bg-[var(--nb-surface)]'
+                              }`}
+                              title={iconKey}
+                            >
+                              <IconComp className="w-4 h-4" />
+                              <span className="text-[10px] font-mono font-bold">{iconKey}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2 pt-1">
+                      <p className="text-[11px] font-mono text-[var(--nb-secondary)]">Upload to Cloudinary or enter URL:</p>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={platformBrandingForm.logoImageUrl || ''}
+                          onChange={(e) => setPlatformBrandingForm(prev => ({ ...prev, logoImageUrl: e.target.value }))}
+                          placeholder="https://res.cloudinary.com/..."
+                          className="flex-1 px-3 py-2 text-xs bg-[var(--nb-surface-accent)] rounded-lg border border-[var(--nb-ink)] text-[var(--nb-content)] font-mono focus:border-[var(--nb-accent)] outline-none"
+                        />
+                        {platformBrandingForm.logoImageUrl && (
+                          <button
+                            type="button"
+                            onClick={() => setPlatformBrandingForm(prev => ({ ...prev, logoImageUrl: '' }))}
+                            className="px-2 py-2 text-xs font-mono text-rose-500 hover:bg-rose-500/10 rounded border border-rose-500/30"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                      <ImageUploader
+                        onUploadSuccess={(urls) => {
+                          if (urls[0]) setPlatformBrandingForm(prev => ({ ...prev, logoImageUrl: urls[0], logoType: 'image' }));
+                        }}
+                        maxFiles={1}
+                        buttonLabel="Upload Logo to Cloudinary"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* Accent Color Theme Selector */}
+                <div className="space-y-2.5 pt-3 border-t border-[var(--nb-divider)]">
+                  <label className="block text-xs font-mono font-bold uppercase tracking-wider text-[var(--nb-content)]">
+                    Master Accent Color Theme
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { key: 'indigo', label: 'Classic Indigo', hex: '#2563EB' },
+                      { key: 'purple', label: 'Electric Purple', hex: '#9333EA' },
+                      { key: 'emerald', label: 'Neo Emerald', hex: '#059669' },
+                      { key: 'amber', label: 'Cyber Amber', hex: '#D97706' },
+                      { key: 'rose', label: 'Vibrant Rose', hex: '#E11D48' },
+                      { key: 'cyan', label: 'Tech Cyan', hex: '#0891B2' },
+                    ].map(theme => (
+                      <button
+                        key={theme.key}
+                        type="button"
+                        onClick={() => setPlatformBrandingForm(prev => ({ ...prev, accentColor: theme.key }))}
+                        className={`px-3 py-1.5 rounded-lg border text-xs font-mono font-bold uppercase cursor-pointer transition-all flex items-center gap-2 ${
+                          platformBrandingForm.accentColor === theme.key
+                            ? 'border-[var(--nb-ink)] bg-[var(--nb-surface-accent)] shadow-[2px_2px_0_var(--nb-ink)]'
+                            : 'border-[var(--nb-divider)] bg-[var(--nb-surface)] text-[var(--nb-secondary)]'
+                        }`}
+                      >
+                        <span className="w-3 h-3 rounded-full border border-black" style={{ background: theme.hex }} />
+                        <span>{theme.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Live Preview Column (5 cols) */}
+              <div className="lg:col-span-5 space-y-4">
+                <div className="bg-[var(--nb-surface)] p-5 rounded-xl border-2 border-[var(--nb-ink)] shadow-[4px_4px_0_var(--nb-ink)] space-y-4">
+                  <div className="flex items-center justify-between border-b border-[var(--nb-divider)] pb-2.5">
+                    <h3 className="nb-headline text-sm text-[var(--nb-content)] flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-amber-500" />
+                      Live Master Brand Preview
+                    </h3>
+                    <span className="text-[10px] font-mono text-[var(--nb-secondary)] uppercase">Login Header Representation</span>
+                  </div>
+
+                  {/* Desktop Preview Strip */}
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] font-mono font-bold text-[var(--nb-secondary)] uppercase">PC / Desktop Top Navbar Preview:</p>
+                    <div className="p-3.5 rounded-xl bg-[var(--nb-surface)] border-2 border-[var(--nb-ink)] shadow-[2.5px_2.5px_0_var(--nb-ink)] flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="p-1 rounded-lg bg-[var(--nb-surface)] border border-[var(--nb-ink)] shadow-[1.5px_1.5px_0_var(--nb-ink)]">
+                          <BrandLogo branding={platformBrandingForm} size="sm" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-display font-black text-sm tracking-wider text-[var(--nb-content)]">
+                              {platformBrandingForm.appName || 'NOTX'}
+                            </span>
+                            <span className="font-mono font-bold text-[9px] uppercase px-1.5 py-0.5 rounded border border-[var(--nb-ink)] bg-emerald-400 text-neutral-950">
+                              MASTER OS
+                            </span>
+                          </div>
+                          <p className="font-mono text-[9px] text-[var(--nb-secondary)] font-bold uppercase truncate max-w-[160px]">
+                            {platformBrandingForm.institution || 'Academic SaaS Ecosystem'}
+                          </p>
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-mono font-bold px-2 py-1 rounded border border-[var(--nb-ink)] bg-[var(--nb-surface-accent)] text-[var(--nb-secondary)]">
+                        Dept: [AIML] ▼
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Mobile Preview Strip */}
+                  <div className="space-y-1.5 pt-2">
+                    <p className="text-[10px] font-mono font-bold text-[var(--nb-secondary)] uppercase">Mobile Hero Header Preview:</p>
+                    <div className="p-4 rounded-xl bg-neutral-900 text-white border-2 border-[var(--nb-ink)] shadow-[2.5px_2.5px_0_var(--nb-ink)] flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="p-1 rounded bg-black/40 border border-white/20">
+                          <BrandLogo branding={platformBrandingForm} size="md" />
+                        </div>
+                        <div>
+                          <span className="bg-rose-500 text-white text-[8px] font-mono font-bold uppercase px-1.5 py-0.5 rounded">
+                            PLATFORM
+                          </span>
+                          <p className="font-display font-black text-base tracking-wider text-white mt-0.5">
+                            {platformBrandingForm.appName || 'NOTX'}
+                          </p>
+                        </div>
+                      </div>
+                      <span className="text-[9px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                        LIVE
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="p-3 rounded-lg bg-[var(--nb-surface-accent)] border border-[var(--nb-divider)] text-[11px] font-mono text-[var(--nb-secondary)] space-y-1">
+                    <p className="font-bold text-[var(--nb-content)] flex items-center gap-1.5">
+                      <Check className="w-3.5 h-3.5 text-emerald-500" />
+                      Instant Real-Time Propagation
+                    </p>
+                    <p>
+                      When you click "Save Platform Brand", all connected clients and the login screen update automatically without requiring server restarts.
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         )}

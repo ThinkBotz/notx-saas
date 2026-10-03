@@ -2037,6 +2037,73 @@ export function subscribeToAppConfig(callback: (config: AppConfig) => void, tena
   });
 }
 
+// ---------------- PLATFORM MASTER BRANDING (SUPER ADMIN CONTROLLED) ----------------
+export const DEFAULT_PLATFORM_BRANDING: AppBranding = {
+  appName: "NOTX",
+  tagline: "Connect",
+  subtitle: "Unified Multi-Tenant Academic OS",
+  institution: "Academic SaaS Ecosystem",
+  loginHeroText: "Universal department pass verification, live notifications, and digital credentials.",
+  logoType: "preset",
+  logoIcon: "Cpu",
+  logoImageUrl: "",
+  accentColor: "indigo"
+};
+
+export async function getPlatformBranding(): Promise<AppBranding> {
+  try {
+    const snap = await getDoc(doc(db, 'appSettings', 'platform_branding'));
+    if (snap.exists()) {
+      return { ...DEFAULT_PLATFORM_BRANDING, ...snap.data() } as AppBranding;
+    }
+    const cached = localStorage.getItem('notx_platform_branding');
+    if (cached) {
+      try { return JSON.parse(cached); } catch (e) {}
+    }
+    return DEFAULT_PLATFORM_BRANDING;
+  } catch (err) {
+    console.warn('Error reading platform branding, falling back to default:', err);
+    return DEFAULT_PLATFORM_BRANDING;
+  }
+}
+
+export async function updatePlatformBranding(branding: Partial<AppBranding>): Promise<void> {
+  try {
+    const ref = doc(db, 'appSettings', 'platform_branding');
+    const existing = await getPlatformBranding();
+    const updated = cleanUndefined({
+      ...DEFAULT_PLATFORM_BRANDING,
+      ...existing,
+      ...branding,
+      updatedAt: new Date().toISOString()
+    });
+    try {
+      localStorage.setItem('notx_platform_branding', JSON.stringify(updated));
+    } catch (e) {}
+    await setDoc(ref, updated, { merge: true });
+  } catch (error) {
+    console.error('Error updating platform branding:', error);
+    handleFirestoreError(error, OperationType.UPDATE, 'appSettings/platform_branding');
+    throw error;
+  }
+}
+
+export function subscribeToPlatformBranding(callback: (branding: AppBranding) => void): () => void {
+  const ref = doc(db, 'appSettings', 'platform_branding');
+  return onSnapshot(ref, (snap) => {
+    if (snap.exists()) {
+      const data = { ...DEFAULT_PLATFORM_BRANDING, ...snap.data() } as AppBranding;
+      try { localStorage.setItem('notx_platform_branding', JSON.stringify(data)); } catch (e) {}
+      callback(data);
+    } else {
+      callback(DEFAULT_PLATFORM_BRANDING);
+    }
+  }, (err) => {
+    console.warn('subscribeToPlatformBranding error:', err);
+    callback(DEFAULT_PLATFORM_BRANDING);
+  });
+}
+
 export interface SystemBackupData {
   meta: {
     exportDate: string;
