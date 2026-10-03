@@ -15,6 +15,7 @@ import {
 import { AppBranding, DEFAULT_BRANDING } from '../types';
 import BrandLogo, { BRAND_ICONS, ACCENT_THEMES } from './BrandLogo';
 import { updateAppBranding } from '../firebase';
+import { uploadToCloudinary } from '../cloudinary';
 
 interface EditBrandingModalProps {
   isOpen: boolean;
@@ -40,40 +41,77 @@ export default function EditBrandingModal({
   const [accentColor, setAccentColor] = useState(currentBranding.accentColor || 'indigo');
   
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
   if (!isOpen) return null;
 
-  // Live draft object for real-time preview
-  const liveDraft: AppBranding = {
-    appName: appName.trim() || 'NOTX',
-    tagline: tagline.trim(),
-    subtitle: subtitle.trim(),
-    logoType,
-    logoIcon,
-    logoImageUrl,
-    accentColor
+  // Helper to downscale and compress image to a tiny webp icon (<15KB) if Cloudinary is unavailable
+  const compressToIconDataUrl = (file: File, maxSize = 128): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          if (width > height) {
+            if (width > maxSize) {
+              height = Math.round((height * maxSize) / width);
+              width = maxSize;
+            }
+          } else {
+            if (height > maxSize) {
+              width = Math.round((width * maxSize) / height);
+              height = maxSize;
+            }
+          }
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return resolve(e.target?.result as string);
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/webp', 0.85));
+        };
+        img.onerror = () => reject(new Error('Failed to load image for compression'));
+        img.src = e.target?.result as string;
+      };
+      reader.onerror = () => reject(new Error('Failed to read file'));
+      reader.readAsDataURL(file);
+    });
   };
 
-  const currentTheme = ACCENT_THEMES[accentColor] || ACCENT_THEMES.indigo;
-
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 1.5 * 1024 * 1024) {
-      setErrorMsg('Image size should be less than 1.5MB for fast loading.');
+    if (file.size > 5 * 1024 * 1024) {
+      setErrorMsg('Image size should be less than 5MB.');
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const base64 = event.target?.result as string;
-      setLogoImageUrl(base64);
+    setIsUploadingLogo(true);
+    setErrorMsg('');
+
+    try {
+      // 1. Primary: Upload directly to Cloudinary
+      const cloudinaryUrl = await uploadToCloudinary(file);
+      setLogoImageUrl(cloudinaryUrl);
       setLogoType('custom');
-      setErrorMsg('');
-    };
-    reader.readAsDataURL(file);
+    } catch (cloudErr: any) {
+      console.warn('Cloudinary upload note:', cloudErr?.message);
+      try {
+        // 2. Safe Fallback: Compress locally to tiny <15KB icon so Firestore accepts it without error
+        const compressedDataUrl = await compressToIconDataUrl(file);
+        setLogoImageUrl(compressedDataUrl);
+        setLogoType('custom');
+      } catch (fallbackErr: any) {
+        setErrorMsg(cloudErr?.message || 'Failed to process logo image.');
+      }
+    } finally {
+      setIsUploadingLogo(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -118,6 +156,19 @@ export default function EditBrandingModal({
     setLogoImageUrl('');
     setAccentColor(DEFAULT_BRANDING.accentColor || 'indigo');
   };
+
+  // Live draft object for real-time preview
+  const liveDraft: AppBranding = {
+    appName: appName.trim() || 'NOTX',
+    tagline: tagline.trim(),
+    subtitle: subtitle.trim(),
+    logoType,
+    logoIcon,
+    logoImageUrl,
+    accentColor
+  };
+
+  const currentTheme = ACCENT_THEMES[accentColor] || ACCENT_THEMES.indigo;
 
   return (
     <div className="fixed inset-0 bg-black/75 z-50 flex items-center justify-center p-3 sm:p-4 select-none animate-fadeIn">
@@ -409,14 +460,26 @@ export default function EditBrandingModal({
 
                   <div className="flex-1 min-w-0 space-y-1">
                     <label 
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded nb-btn font-bold text-xs uppercase cursor-pointer"
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded nb-btn font-bold text-xs uppercase cursor-pointer ${
+                        isUploadingLogo ? 'opacity-60 pointer-events-none' : ''
+                      }`}
                       style={{ border: '1.5px solid var(--nb-ink)', boxShadow: 'var(--shadow-hard-sm)' }}
                     >
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>Upload Logo File</span>
+                      {isUploadingLogo ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          <span>Uploading to Cloudinary...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="w-3.5 h-3.5" />
+                          <span>Upload Logo File</span>
+                        </>
+                      )}
                       <input
                         type="file"
                         accept="image/*"
+                        disabled={isUploadingLogo}
                         onChange={handleFileUpload}
                         className="hidden"
                       />
