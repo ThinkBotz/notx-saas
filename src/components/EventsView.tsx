@@ -609,6 +609,11 @@ export default function EventsView({
   const handleWithdraw = async () => {
     if (!selectedEvent || !userRegistration) return;
 
+    if (userRegistration.status === 'Attended') {
+      alert('Attendance has already been marked as Present for this event. Verified attendance records cannot be self-withdrawn. Only a department administrator can remove this record.');
+      return;
+    }
+
     if (isSelectedEventCompleted) {
       alert('This event has already concluded. Registrations cannot be withdrawn once an event has ended.');
       return;
@@ -1729,9 +1734,18 @@ export default function EventsView({
                           View Digital Event Pass (QR)
                         </button>
 
-                        {/* Event Conclusion or Withdraw Option */}
+                        {/* Event Conclusion, Attendance Verified, or Withdraw Option */}
                         <div className="pt-2.5 w-full border-t border-[var(--nb-divider)] mt-2">
-                          {isSelectedEventCompleted ? (
+                          {userRegistration?.status === 'Attended' ? (
+                            <div className="text-center py-1 space-y-1">
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 border border-emerald-500/40 font-mono text-[10px] font-bold uppercase">
+                                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 stroke-[2.5]" /> Attendance Verified • Locked
+                              </span>
+                              <p className="text-[10px] text-[var(--nb-secondary)] leading-relaxed">
+                                Attendance has been confirmed for this event. Verified records cannot be withdrawn. Only a department administrator can remove this record.
+                              </p>
+                            </div>
+                          ) : isSelectedEventCompleted ? (
                             <div className="text-center py-1">
                               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded bg-[var(--nb-surface-accent)] text-[var(--nb-secondary)] border border-[var(--nb-ink)] font-mono text-[10px] font-bold uppercase">
                                 <Clock className="w-3.5 h-3.5" /> Event Concluded • Withdrawal Closed

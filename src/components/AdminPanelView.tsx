@@ -1191,6 +1191,16 @@ export default function AdminPanelView({
         playFeedbackChime('error');
       }
     } else {
+      // Check if registration exists for another event
+      const otherEventReg = registrations.find(r => r.registrationId?.trim().toUpperCase() === cleanInput);
+      if (otherEventReg) {
+        const otherEv = events.find(e => e.eventId === otherEventReg.eventId);
+        setScanResultMsg(`Pass Mismatch: This pass was issued for "${otherEv?.title || otherEventReg.eventId}". Please select that event in the dropdown above.`);
+        setScanResultType('error');
+        playFeedbackChime('error');
+        return;
+      }
+
       // 2. Check if student profile exists in memory or Firestore
       let studentProfile = allUsers.find(u =>
         u.rollNumber?.trim().toUpperCase() === cleanInput ||

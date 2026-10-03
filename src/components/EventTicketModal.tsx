@@ -7,7 +7,6 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 import { fireConfetti } from '../utils/confetti';
 import { DepartmentEvent, EventRegistration, UserProfile, AppBranding, DEFAULT_BRANDING } from '../types';
-import { generateTicketSignature } from '../utils/auth';
 
 interface EventTicketModalProps {
   event: DepartmentEvent;
@@ -32,44 +31,8 @@ export default function EventTicketModal({
   const regCode = (registration.registrationId || '0000').replace(/[^a-zA-Z0-9]/g, '').substring(0, 4).toUpperCase();
   const ticketNumber = `NOTX-${roll}-${eventCode}-${regCode}`;
 
-  // Smart signed QR payload compatible with Admin Quick Check-in Scanner
-  const [qrPayload, setQrPayload] = useState<string>(roll ? roll.toUpperCase() : registration.registrationId);
-
-  useEffect(() => {
-    let isMounted = true;
-    async function signPayload() {
-      const activeTid = event.tenantId || registration.tenantId || user.tenantId || '';
-      try {
-        const sig = await generateTicketSignature(
-          registration.registrationId,
-          event.eventId,
-          roll,
-          activeTid
-        );
-        const signedTicketObj = {
-          type: 'NOTX_TICKET',
-          ticket: ticketNumber,
-          regId: registration.registrationId,
-          roll: roll.toUpperCase(),
-          eventId: event.eventId,
-          tenantId: activeTid,
-          sig
-        };
-        if (isMounted) {
-          setQrPayload(JSON.stringify(signedTicketObj));
-        }
-      } catch {
-        if (isMounted) {
-          setQrPayload(roll ? roll.toUpperCase() : registration.registrationId);
-        }
-      }
-    }
-    signPayload();
-    return () => {
-      isMounted = false;
-    };
-  }, [registration.registrationId, event.eventId, roll, event.tenantId, registration.tenantId, user.tenantId, ticketNumber]);
-
+  // Clean registration ID payload for fast, reliable, low-density camera QR scanning
+  const qrPayload = registration.registrationId || (roll ? roll.toUpperCase() : 'PASS');
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&color=000000&bgcolor=ffffff&margin=1&data=${encodeURIComponent(qrPayload)}`;
 
   const handleCopyTicket = () => {
@@ -311,7 +274,7 @@ export default function EventTicketModal({
           {/* QR Code Section */}
           <div className="p-4 flex items-center gap-4 bg-[var(--nb-surface)]">
             <div 
-              className="w-24 h-24 bg-white p-1 rounded shrink-0 flex items-center justify-center relative overflow-hidden"
+              className="w-28 h-28 bg-white p-1.5 rounded shrink-0 flex items-center justify-center relative overflow-hidden"
               style={{ border: '2px solid var(--nb-ink)', boxShadow: 'var(--shadow-hard-sm)' }}
             >
               <img 

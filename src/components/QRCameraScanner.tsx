@@ -91,8 +91,8 @@ export default function QRCameraScanner({ onScan, onError }: QRCameraScannerProp
       const qrConfig = {
         fps: 15,
         qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
-          const edge = Math.floor(Math.min(viewfinderWidth, viewfinderHeight) * 0.72);
-          return { width: Math.max(180, edge), height: Math.max(180, edge) };
+          const edge = Math.floor(Math.min(viewfinderWidth, viewfinderHeight) * 0.85);
+          return { width: Math.max(220, edge), height: Math.max(220, edge) };
         },
         aspectRatio: 1.0,
       };
