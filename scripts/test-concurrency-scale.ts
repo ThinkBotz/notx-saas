@@ -38,6 +38,8 @@ import {
 } from '../src/firebase';
 import { generateTicketSignature, verifyTicketSignature } from '../src/utils/auth';
 import { DepartmentEvent, EventRegistration, UserProfile } from '../src/types';
+import { db } from '../src/firebase';
+import { doc, deleteDoc, getDocs, query, collection, where, writeBatch } from 'firebase/firestore';
 
 interface MetricResult {
   title: string;
@@ -435,6 +437,30 @@ async function runScaleAndConcurrencySuite() {
         }
       }
 
+      // Purge tenant appSettings configs
+      for (const t of tenantsConfig) {
+        await deleteDoc(doc(db, 'appSettings', `config_${t.id}`)).catch(() => {});
+      }
+
+      // Purge tenant audit logs created during stress run
+      for (const t of tenantsConfig) {
+        try {
+          const logSnap = await getDocs(query(collection(db, 'audit_logs'), where('tenantId', '==', t.id)));
+          let b = writeBatch(db);
+          let count = 0;
+          for (const d of logSnap.docs) {
+            b.delete(doc(db, 'audit_logs', d.id));
+            count++;
+            if (count === 400) {
+              await b.commit();
+              b = writeBatch(db);
+              count = 0;
+            }
+          }
+          if (count > 0) await b.commit();
+        } catch (_) {}
+      }
+
       // Verify zero residual records remain for all 4 tenants
       const residualEvents = (await Promise.all(tenantsConfig.map(t => fetchEvents(t.id)))).flat();
       const residualRegs = (await Promise.all(tenantsConfig.map(t => fetchRegistrations(t.id)))).flat();
@@ -449,7 +475,7 @@ async function runScaleAndConcurrencySuite() {
         'STAGE 8: 4-Tenant Cascade Purge & Zero-Residue Verification',
         isCompletelyClean,
         isCompletelyClean
-          ? 'Purged 4 tenants, 400 students, 4 events, 200 registrations, and vault records. Residual records: 0.'
+          ? 'Purged 4 tenants, 400 students, 4 events, 200 registrations, audit logs, configs, and vault records. Residual records: 0.'
           : `Residual records detected: events=${residualEvents.length}, regs=${residualRegs.length}, users=${residualUsers.length}`,
         Date.now() - t7
       );

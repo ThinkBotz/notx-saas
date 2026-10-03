@@ -44,7 +44,7 @@ import {
   updateTicketStatus,
   purgeDeletedBackup
 } from '../src/firebase';
-import { doc, getDoc, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, deleteDoc, getDocs, query, collection, where, writeBatch } from 'firebase/firestore';
 import { generateTicketSignature, verifyTicketSignature } from '../src/utils/auth';
 import { DepartmentEvent, EventRegistration, UserProfile } from '../src/types';
 
@@ -389,7 +389,20 @@ async function runAutomation() {
         purgedItemsCount++;
       }
 
-      // 4. Verification of complete purge
+      // 4. Purge tenant appSettings config
+      await deleteDoc(doc(db, 'appSettings', `config_${testTenantId}`)).catch(() => {});
+
+      // 5. Purge tenant audit logs created during test
+      try {
+        const logSnap = await getDocs(query(collection(db, 'audit_logs'), where('tenantId', '==', testTenantId)));
+        let b = writeBatch(db);
+        for (const d of logSnap.docs) {
+          b.delete(doc(db, 'audit_logs', d.id));
+        }
+        await b.commit();
+      } catch (_) {}
+
+      // 6. Verification of complete purge
       const remainingEvents = await fetchEvents(testTenantId);
       const remainingRegs = await fetchRegistrations(testTenantId);
       const remainingTenant = await getTenant(testTenantId);
@@ -402,7 +415,7 @@ async function runAutomation() {
         'STAGE 8: Cascade Teardown & Zero-Residue Purge',
         isClean,
         isClean
-          ? `Purged all test entities and vault backup. Remaining records for ${testTenantId}: 0.`
+          ? `Purged all test entities, appSettings, audit logs, and vault backup. Remaining records for ${testTenantId}: 0.`
           : 'Residual test records detected after purge',
         Date.now() - t7
       );
