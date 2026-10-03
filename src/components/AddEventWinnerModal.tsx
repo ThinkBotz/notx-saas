@@ -298,7 +298,6 @@ export default function AddEventWinnerModal({
                 <div className="flex items-center gap-2.5 min-w-0">
                   <div 
                     className="w-8 h-8 rounded bg-[var(--nb-surface)] overflow-hidden shrink-0"
-                    style={{ border: '1px solid var(--nb-ink)' }}
                   >
                     <img
                       src={selectedStudent.profile_pic || `https://api.dicebear.com/9.x/notionists/svg?seed=${selectedStudent.rollNumber || selectedStudent.uid}`}
@@ -369,7 +368,6 @@ export default function AddEventWinnerModal({
                           <div className="flex items-center gap-2 min-w-0">
                             <div 
                               className="w-7 h-7 rounded bg-[var(--nb-surface-accent)] overflow-hidden shrink-0"
-                              style={{ border: '1px solid var(--nb-ink)' }}
                             >
                               <img
                                 src={st.profile_pic || `https://api.dicebear.com/9.x/notionists/svg?seed=${st.rollNumber || st.uid}`}

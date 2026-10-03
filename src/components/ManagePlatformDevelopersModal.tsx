@@ -564,7 +564,6 @@ export default function ManagePlatformDevelopersModal({
                             </span>
                             <div 
                               className="w-10 h-10 rounded overflow-hidden shrink-0 bg-[var(--nb-surface-accent)]"
-                              style={{ border: '1px solid var(--nb-ink)' }}
                             >
                               <img src={avatar} alt={member.name} className="w-full h-full object-cover" />
                             </div>

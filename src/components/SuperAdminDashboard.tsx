@@ -892,7 +892,7 @@ export default function SuperAdminDashboard({
 
           <div className="pt-1.5 flex items-center justify-between border-t border-[var(--nb-divider)] gap-2 min-w-0">
             <span className="text-[9px] font-mono opacity-80 uppercase truncate flex-1 min-w-0">
-              🏛 {institution || 'Academic SaaS Ecosystem'}
+              🏛 {institution || 'NotX Connect'}
             </span>
             <span
               className="text-[9px] font-mono font-black uppercase px-2 py-0.5 rounded border border-[var(--nb-ink)] shadow-[1.5px_1.5px_0_var(--nb-ink)] shrink-0"
@@ -1110,7 +1110,7 @@ export default function SuperAdminDashboard({
                   NOTX
                 </span>
                 <span className="nb-pill-coral text-[8.5px] font-mono font-bold uppercase py-0.5 px-1.5 shrink-0">
-                  SAAS ROOT
+                  ADMIN
                 </span>
                 <span className="hidden md:inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/30 text-[9px] font-mono font-bold text-emerald-600 dark:text-emerald-400">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -1118,7 +1118,7 @@ export default function SuperAdminDashboard({
                 </span>
               </div>
               <p className="text-[10px] font-mono text-[var(--nb-secondary)] truncate hidden xs:block">
-                Universal Multi-Tenant Academic Command Center
+                NotX Connect Control Center
               </p>
             </div>
           </div>
@@ -2129,7 +2129,7 @@ export default function SuperAdminDashboard({
                       <div className="flex items-start gap-3.5 pt-1">
                         {/* Avatar */}
                         <div 
-                          className="w-14 h-14 rounded-md overflow-hidden shrink-0 bg-[var(--nb-surface-accent)] mt-0.5 border-2 border-[var(--nb-ink)]"
+                          className="w-14 h-14 rounded-md overflow-hidden shrink-0 bg-[var(--nb-surface-accent)] mt-0.5"
                         >
                           <img 
                             src={avatar} 
@@ -2368,16 +2368,16 @@ export default function SuperAdminDashboard({
                     />
                   </div>
 
-                  {/* Institution / Ecosystem */}
+                  {/* Institution */}
                   <div>
                     <label className="block text-xs font-mono font-bold uppercase tracking-wider text-[var(--nb-content)] mb-1.5">
-                      Institution / Ecosystem
+                      Institution
                     </label>
                     <input
                       type="text"
                       value={platformBrandingForm.institution || ''}
                       onChange={(e) => setPlatformBrandingForm(prev => ({ ...prev, institution: e.target.value }))}
-                      placeholder="e.g. Academic SaaS Ecosystem"
+                      placeholder="e.g. NotX Connect"
                       className="w-full px-3 py-2 text-xs bg-[var(--nb-surface-accent)] rounded-lg border border-[var(--nb-ink)] text-[var(--nb-content)] font-medium focus:border-[var(--nb-accent)] outline-none"
                     />
                   </div>
@@ -2471,36 +2471,7 @@ export default function SuperAdminDashboard({
                   )}
                 </div>
 
-                {/* Accent Color Theme Selector */}
-                <div className="space-y-2.5 pt-3 border-t border-[var(--nb-divider)]">
-                  <label className="block text-xs font-mono font-bold uppercase tracking-wider text-[var(--nb-content)]">
-                    Master Accent Color Theme
-                  </label>
-                  <div className="flex flex-wrap gap-2">
-                    {[
-                      { key: 'indigo', label: 'Classic Indigo', hex: '#2563EB' },
-                      { key: 'purple', label: 'Electric Purple', hex: '#9333EA' },
-                      { key: 'emerald', label: 'Neo Emerald', hex: '#059669' },
-                      { key: 'amber', label: 'Cyber Amber', hex: '#D97706' },
-                      { key: 'rose', label: 'Vibrant Rose', hex: '#E11D48' },
-                      { key: 'cyan', label: 'Tech Cyan', hex: '#0891B2' },
-                    ].map(theme => (
-                      <button
-                        key={theme.key}
-                        type="button"
-                        onClick={() => setPlatformBrandingForm(prev => ({ ...prev, accentColor: theme.key }))}
-                        className={`px-3 py-1.5 rounded-lg border text-xs font-mono font-bold uppercase cursor-pointer transition-all flex items-center gap-2 ${
-                          platformBrandingForm.accentColor === theme.key
-                            ? 'border-[var(--nb-ink)] bg-[var(--nb-surface-accent)] shadow-[2px_2px_0_var(--nb-ink)]'
-                            : 'border-[var(--nb-divider)] bg-[var(--nb-surface)] text-[var(--nb-secondary)]'
-                        }`}
-                      >
-                        <span className="w-3 h-3 rounded-full border border-black" style={{ background: theme.hex }} />
-                        <span>{theme.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
+
               </div>
 
               {/* Live Preview Column (5 cols) */}
@@ -2532,7 +2503,7 @@ export default function SuperAdminDashboard({
                             </span>
                           </div>
                           <p className="font-mono text-[9px] text-[var(--nb-secondary)] font-bold uppercase truncate max-w-[160px]">
-                            {platformBrandingForm.institution || 'Academic SaaS Ecosystem'}
+                            {platformBrandingForm.institution || 'NotX Connect'}
                           </p>
                         </div>
                       </div>

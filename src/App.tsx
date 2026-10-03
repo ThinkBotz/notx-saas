@@ -749,27 +749,13 @@ export default function App() {
               <button
                 onClick={() => navigateToTab('home')}
                 className="flex items-center gap-2.5 min-w-0 cursor-pointer"
-                title={`${currentBranding.appName || 'NOTX'} ${currentBranding.tagline || 'Connect'}`}
+                title="NotX Connect"
               >
                 <BrandLogo branding={currentBranding} size="md" />
                 <div className="min-w-0">
-                  <div className="flex items-center gap-2 flex-nowrap">
-                    <h1 className="nb-headline text-base sm:text-lg text-[var(--nb-content)] truncate">
-                      {currentBranding.appName || 'NOTX'}
-                    </h1>
-                    {activeTenant ? (
-                      <span className={`${tenantTheme.previewBadgeClass || 'nb-pill-cyan'} text-[9.5px] font-mono font-bold inline-flex items-center gap-1 shadow-[1.5px_1.5px_0_var(--nb-ink)] max-w-[120px] sm:max-w-[200px] truncate`} title={`Department: ${activeTenant.name}`}>
-                        <span className="truncate">{activeTenant.shortCode || activeTenant.name}</span>
-                      </span>
-                    ) : currentBranding.subtitle ? (
-                      <span className={`${tenantTheme.previewBadgeClass || 'nb-pill-yellow'} text-[9.5px] font-mono font-bold hidden sm:inline-flex shadow-[1.5px_1.5px_0_var(--nb-ink)] max-w-[160px] truncate`}>
-                        <span className="truncate">{currentBranding.subtitle}</span>
-                      </span>
-                    ) : null}
-                  </div>
-                  <p className="nb-label text-[10px] mt-0.5 truncate" style={{ color: 'var(--nb-tertiary)' }}>
-                    {currentBranding.tagline ? `${currentBranding.tagline} Portal` : 'Association Ecosystem'}
-                  </p>
+                  <h1 className="nb-headline text-base sm:text-lg text-[var(--nb-content)] truncate">
+                    {currentBranding.appName || 'NotX'} <span className="font-medium">{currentBranding.tagline || 'Connect'}</span>
+                  </h1>
                 </div>
               </button>
 
@@ -793,7 +779,7 @@ export default function App() {
                   onClick={() => navigateToTab('profile')}
                   className="flex items-center gap-2 h-11 pl-2 pr-3 border-[1.5px] border-[var(--nb-ink)] rounded-md bg-[var(--nb-surface)] shadow-[2px_2px_0_var(--nb-ink)] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none transition-all cursor-pointer"
                 >
-                  <div className="w-7 h-7 rounded overflow-hidden border-[1.5px] border-[var(--nb-ink)] bg-[var(--nb-surface-accent)] flex-shrink-0">
+                  <div className="w-7 h-7 rounded overflow-hidden bg-[var(--nb-surface-accent)] flex-shrink-0">
                     <img
                       src={currentUser.profile_pic || `https://api.dicebear.com/9.x/notionists/svg?seed=${currentUser.rollNumber || currentUser.uid}`}
                       alt={currentUser.name}

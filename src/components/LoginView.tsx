@@ -333,8 +333,8 @@ export default function LoginView({
             isSuperAdmin: true,
             tenantId: '', // Global super admin belongs to platform oversight, not a single department
             profile_pic: result.user.photoURL || "",
-            position: "SaaS Super Administrator",
-            department: "NOTX Global Administration",
+            position: "Super Administrator",
+            department: "NotX Connect Administration",
             responsibilities: "Platform control and tenant oversight",
             created_at: new Date().toISOString()
           };
@@ -495,12 +495,6 @@ export default function LoginView({
               <Building2 className="w-3.5 h-3.5" />
               SELECT ASSOCIATION / TENANT
             </span>
-            <span
-              className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border border-[var(--nb-ink)] shadow-[1px_1px_0_var(--nb-ink)]"
-              style={{ background: currentTheme.subtleBg, color: '#111111' }}
-            >
-              THEME: {currentTheme.name}
-            </span>
           </label>
           <div className="relative">
             <Building2 className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--nb-content)] pointer-events-none" />
@@ -651,11 +645,11 @@ export default function LoginView({
                 NX
               </div>
               <span className="font-display font-black text-lg tracking-wider text-[var(--nb-content)]">
-                ABOUT NOTX
+                ABOUT NOTX CONNECT
               </span>
             </div>
             <p className="font-sans text-xs sm:text-sm text-[var(--nb-secondary)] leading-relaxed">
-              NOTX is a high-performance multi-tenant academic and association management ecosystem. Designed for colleges, student associations, hackathons, and technical departments, it delivers instant isolated workspaces, real-time leaderboard statistics, automated event certificate issuance, and streamlined member administration.
+              NotX Connect is a multi-tenant academic and association management platform. Designed for colleges, student associations, hackathons, and technical departments, it delivers instant isolated workspaces, real-time leaderboard statistics, automated event certificate issuance, and streamlined member administration.
             </p>
             <div className="flex flex-wrap items-center gap-2 pt-1 font-mono text-[10px] font-bold text-[var(--nb-secondary)] uppercase">
               <span className="px-2 py-0.5 rounded border border-[var(--nb-ink)] bg-[var(--nb-surface-accent)]">
@@ -716,7 +710,7 @@ export default function LoginView({
 
         {/* Bottom Bar: Copyright & Attribution */}
         <div className="mt-8 pt-5 border-t border-[var(--nb-divider)] flex flex-col sm:flex-row items-center justify-between gap-3 font-mono text-[11px] text-[var(--nb-secondary)]">
-          <p>© {new Date().getFullYear()} NOTX Platform • Powered by ThinkBotz</p>
+          <p>© {new Date().getFullYear()} NotX Connect • Powered by ThinkBotz</p>
           <p className="flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
             Unified Academic & Association Management
@@ -862,7 +856,7 @@ export default function LoginView({
                     AFFILIATED INSTITUTION
                   </span>
                   <p className="font-sans font-extrabold text-xs leading-tight text-[var(--nb-content)] mt-0.5 break-words">
-                    {selectedTenant?.institution || selectedTenant?.branding?.institution || 'Academic SaaS Ecosystem'}
+                    {selectedTenant?.institution || selectedTenant?.branding?.institution || 'NotX Connect'}
                   </p>
                 </div>
               </div>
@@ -925,7 +919,7 @@ export default function LoginView({
                 </span>
               </div>
               <p className="font-mono text-[10px] text-[var(--nb-secondary)] font-bold uppercase truncate max-w-xs">
-                {platformBranding.institution || 'Academic SaaS Ecosystem'}
+                {platformBranding.institution || 'NotX Connect'}
               </p>
             </div>
           </div>

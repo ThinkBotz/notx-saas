@@ -243,7 +243,6 @@ export default function ProfileView({
           >
             <div 
               className="w-20 h-20 sm:w-22 sm:h-22 rounded-md overflow-hidden p-[2px] bg-[var(--nb-surface-accent)]"
-              style={{ border: '2px solid var(--nb-ink)' }}
             >
               <img 
                 src={currentAvatar} 
@@ -253,7 +252,6 @@ export default function ProfileView({
             </div>
             <div 
               className="absolute -bottom-1 -right-1 bg-[var(--nb-ink)] text-[var(--nb-bg)] p-1.5 rounded"
-              style={{ border: '1.5px solid var(--nb-ink)' }}
             >
               <Camera className="w-3.5 h-3.5" />
             </div>

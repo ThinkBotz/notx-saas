@@ -1700,7 +1700,6 @@ export default function AdminPanelView({
                           src={assoc.profile_pic || `https://api.dicebear.com/9.x/notionists/svg?seed=${assoc.rollNumber || assoc.uid}`}
                           alt={assoc.name}
                           className="w-11 h-11 rounded object-cover bg-[var(--nb-surface-accent)] shrink-0"
-                          style={{ border: '1.5px solid var(--nb-ink)' }}
                         />
                         <div className="min-w-0 flex-1">
                           <h4 className="nb-headline text-sm text-[var(--nb-content)] truncate">{assoc.name}</h4>

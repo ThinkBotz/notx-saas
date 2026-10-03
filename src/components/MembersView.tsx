@@ -89,7 +89,6 @@ const LeaderMemberCard = ({ member }: { member: UserProfile }) => {
       {/* Avatar */}
       <div 
         className="w-12 h-12 rounded-md overflow-hidden shrink-0 bg-[var(--nb-surface-accent)] mt-0.5"
-        style={{ border: '1.5px solid var(--nb-ink)' }}
       >
         <img 
           src={member.profile_pic || `https://api.dicebear.com/9.x/notionists/svg?seed=${member.rollNumber || member.uid}`} 
@@ -385,7 +384,6 @@ export default function MembersView({
                     {/* Avatar */}
                     <div 
                       className="w-12 h-12 rounded-md overflow-hidden shrink-0 bg-[var(--nb-surface-accent)] mt-0.5"
-                      style={{ border: '1.5px solid var(--nb-ink)' }}
                     >
                       <img 
                         src={avatar} 
@@ -495,7 +493,6 @@ export default function MembersView({
                 {/* Avatar */}
                 <div 
                   className="w-12 h-12 rounded-md overflow-hidden shrink-0 bg-[var(--nb-surface-accent)] mt-0.5"
-                  style={{ border: '1.5px solid var(--nb-ink)' }}
                 >
                   <img 
                     src={member.profile_pic || `https://api.dicebear.com/9.x/notionists/svg?seed=${member.rollNumber || member.uid}`} 
@@ -694,7 +691,6 @@ export default function MembersView({
                           {/* Avatar */}
                           <div 
                             className="w-11 h-11 rounded-md overflow-hidden shrink-0 bg-[var(--nb-surface)] mt-0.5"
-                            style={{ border: '1.5px solid var(--nb-ink)' }}
                           >
                             <img 
                               src={member.profile_pic || `https://api.dicebear.com/9.x/notionists/svg?seed=${member.rollNumber || member.uid}`} 
@@ -887,7 +883,6 @@ export default function MembersView({
                   >
                     <div 
                       className="w-10 h-10 rounded overflow-hidden flex-shrink-0 bg-[var(--nb-surface-accent)]"
-                      style={{ border: '1px solid var(--nb-ink)' }}
                     >
                       <img 
                         src={member.profile_pic || `https://api.dicebear.com/9.x/notionists/svg?seed=${member.rollNumber || member.uid}`} 

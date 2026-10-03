@@ -158,7 +158,6 @@ export default function BrandLogo({
 
   const containerStyle: React.CSSProperties = {
     backgroundColor: accentHex,
-    border: '2px solid var(--nb-ink)',
     color: accentFg,
     flexShrink: 0,
   };

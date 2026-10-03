@@ -1469,7 +1469,6 @@ export default function EventsView({
                               src={coord.profile_pic || `https://api.dicebear.com/9.x/notionists/svg?seed=${coord.rollNumber || coord.uid}`}
                               alt={coord.name}
                               className="w-8 h-8 rounded bg-[var(--nb-surface-accent)] object-cover"
-                              style={{ border: '1px solid var(--nb-ink)' }}
                             />
                             <div>
                               <div className="text-xs font-bold text-[var(--nb-content)]">{coord.name}</div>
