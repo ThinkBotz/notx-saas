@@ -21,7 +21,8 @@ import {
   Users,
   X,
   ArrowRight,
-  ExternalLink
+  ExternalLink,
+  Mail
 } from 'lucide-react';
 import { UserProfile, AppBranding, DEFAULT_BRANDING, Tenant, SUPER_ADMIN_EMAILS, DepartmentEvent, EventWinner } from '../types';
 import BrandLogo from './BrandLogo';
@@ -190,8 +191,8 @@ export default function LoginView({
           const foundProfile = await findUserForLogin(cleanRoll, selectedTenantId);
           if (foundProfile) {
             // Check password against stored hash or default credentials
-            const isValidPassword = foundProfile.password 
-              ? (await verifyPassword(password, foundProfile.password)).isValid 
+            const isValidPassword = foundProfile.password
+              ? (await verifyPassword(password, foundProfile.password)).isValid
               : (password === cleanRoll || password === 'notx@123');
 
             if (isValidPassword) {
@@ -620,6 +621,96 @@ export default function LoginView({
     </div>
   );
 
+  // Reusable Neo-Brutalist Footer for Mobile & Desktop
+  const renderFooter = () => (
+    <footer className="w-full border-t-[2.5px] border-[var(--nb-ink)] bg-[var(--nb-surface)] text-[var(--nb-content)] mt-auto flex-shrink-0 transition-colors">
+      <div className="max-w-7xl mx-auto px-5 sm:px-8 py-8 sm:py-10">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-8 lg:gap-10">
+          {/* Column 1: About NOTX (5 cols) */}
+          <div className="lg:col-span-5 flex flex-col gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-[var(--nb-ink)] text-[var(--nb-surface)] flex items-center justify-center font-display font-black text-sm border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)]">
+                NX
+              </div>
+              <span className="font-display font-black text-lg tracking-wider text-[var(--nb-content)]">
+                ABOUT NOTX
+              </span>
+            </div>
+            <p className="font-sans text-xs sm:text-sm text-[var(--nb-secondary)] leading-relaxed">
+              NOTX is a high-performance multi-tenant academic and association management ecosystem. Designed for colleges, student associations, hackathons, and technical departments, it delivers instant isolated workspaces, real-time leaderboard statistics, automated event certificate issuance, and streamlined member administration.
+            </p>
+            <div className="flex flex-wrap items-center gap-2 pt-1 font-mono text-[10px] font-bold text-[var(--nb-secondary)] uppercase">
+              <span className="px-2 py-0.5 rounded border border-[var(--nb-ink)] bg-[var(--nb-surface-accent)]">
+                Multi-Tenant Isolation
+              </span>
+              <span className="px-2 py-0.5 rounded border border-[var(--nb-ink)] bg-[var(--nb-surface-accent)]">
+                Role-Based Access
+              </span>
+              <span className="px-2 py-0.5 rounded border border-[var(--nb-ink)] bg-[var(--nb-surface-accent)]">
+                Enterprise Cloud Security
+              </span>
+            </div>
+          </div>
+
+          {/* Column 2: Active Workspace / System Identity (3 cols) */}
+          <div className="lg:col-span-3 flex flex-col gap-3">
+            <h4 className="font-mono text-xs font-black uppercase tracking-wider text-[var(--nb-content)] flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 border border-[var(--nb-ink)]" />
+              Platform Instance
+            </h4>
+            <div className="space-y-2 font-sans text-xs text-[var(--nb-secondary)]">
+              <p className="flex items-center gap-1.5 font-bold text-[var(--nb-content)]">
+                <School className="w-3.5 h-3.5 shrink-0 text-[var(--nb-secondary)]" />
+                {selectedTenant?.institution || selectedTenant?.branding?.institution || 'Academic SaaS Ecosystem'}
+              </p>
+              <p className="font-mono text-[11px] text-[var(--nb-content)]">
+                {selectedTenant ? `Current Tenant: ${selectedTenant.name} (${selectedTenant.shortCode})` : 'Universal Multi-Tenant Gateway'}
+              </p>
+              <p className="font-mono text-[10px] text-[var(--nb-secondary)] leading-normal pt-1">
+                Unified single-page portal with tenant auto-routing and authenticated sessions.
+              </p>
+            </div>
+          </div>
+
+          {/* Column 3: Contact & Direct Support (4 cols) */}
+          <div className="lg:col-span-4 flex flex-col gap-3">
+            <h4 className="font-mono text-xs font-black uppercase tracking-wider text-[var(--nb-content)] flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-amber-500 border border-[var(--nb-ink)]" />
+              Contact & Support
+            </h4>
+            <p className="font-sans text-xs text-[var(--nb-secondary)]">
+              Questions, onboarding assistance, or department tenant inquiries? Connect with platform administration directly:
+            </p>
+
+            <div className="flex flex-col gap-2.5 pt-1">
+              {/* Mail Link */}
+              <a
+                href="mailto:syedsame2244@gmail.com"
+                className="inline-flex items-center justify-start gap-2.5 px-3.5 py-2 rounded-lg border-2 border-[var(--nb-ink)] bg-[var(--nb-surface)] text-[var(--nb-content)] hover:bg-[var(--nb-surface-accent)] font-mono text-xs font-bold shadow-[2px_2px_0_var(--nb-ink)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all cursor-pointer truncate"
+                title="Send Email to NOTX Support"
+              >
+                <Mail className="w-4 h-4 shrink-0 text-red-500" />
+                <span className="truncate">syedsame2244@gmail.com</span>
+              </a>
+
+              {/* WhatsApp Button (Number hidden behind the button) */}
+              ?
+            </div>
+          </div>
+        </div>
+
+        {/* Bottom Bar: Copyright & Attribution */}
+        <div className="mt-8 pt-5 border-t border-[var(--nb-divider)] flex flex-col sm:flex-row items-center justify-between gap-3 font-mono text-[11px] text-[var(--nb-secondary)]">
+          <p>© {new Date().getFullYear()} NOTX Platform • Powered by ThinkBotz</p>
+          <p className="flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            Unified Academic & Association Management
+          </p>
+        </div>
+      </div>
+    </footer>
+  );
+
   return (
     <>
       {/* ─────────────────────────────────────────────────────────────
@@ -784,10 +875,13 @@ export default function LoginView({
         {/* ── MOBILE FORM CONTAINER ── */}
         <div
           id="login-form-card"
-          className="flex-1 flex flex-col justify-start items-center p-4 py-6 overflow-visible pb-24 [-webkit-overflow-scrolling:touch]"
+          className="flex-1 flex flex-col justify-start items-center p-4 py-6 overflow-visible pb-6 [-webkit-overflow-scrolling:touch]"
         >
           {renderLoginForm(false)}
         </div>
+
+        {/* ── MOBILE FOOTER ── */}
+        {renderFooter()}
       </div>
 
       {/* ─────────────────────────────────────────────────────────────
@@ -1112,22 +1206,8 @@ export default function LoginView({
           </section>
         </main>
 
-        {/* ── DESKTOP FOOTER (Clean copyright and institution info without redundant sign-in button) ── */}
-        <footer className="border-t-[2.5px] border-[var(--nb-ink)] bg-[var(--nb-surface)] px-8 py-6 flex-shrink-0">
-          <div className="max-w-7xl mx-auto flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <School className="w-5 h-5 text-[var(--nb-secondary)]" />
-              <div>
-                <p className="font-sans font-bold text-xs text-[var(--nb-content)]">
-                  {selectedTenant?.institution || selectedTenant?.branding?.institution || 'Academic SaaS Ecosystem'}
-                </p>
-                <p className="font-mono text-[10px] text-[var(--nb-secondary)]">
-                  NOTX Multi-Tenant Association Platform
-                </p>
-              </div>
-            </div>
-          </div>
-        </footer>
+        {/* ── DESKTOP FOOTER ── */}
+        {renderFooter()}
       </div>
 
       {/* ─────────────────────────────────────────────────────────────
