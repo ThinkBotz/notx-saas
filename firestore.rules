@@ -9,7 +9,12 @@ service cloud.firestore {
 
     function isSuperAdmin() {
       return isAuthenticated() && (
-        request.auth.token.email.lower() == 'syedsame2244@gmail.com'
+        request.auth.token.email.lower() in [
+          'syedsame2244@gmail.com',
+          'syedsameer2244@gmail.com',
+          'admin@thinkbotz.in'
+        ] ||
+        request.auth.token.isSuperAdmin == true
       );
     }
 
@@ -25,24 +30,44 @@ service cloud.firestore {
       );
     }
 
+    function isTenantAssociateOrAdmin(tenantId) {
+      return isTenantAdmin(tenantId) || (
+        isAuthenticated() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'associate', 'coordinator', 'president']
+      );
+    }
+
     // --- 1. Tenants Collection ---
-    // Anyone can read tenant metadata (necessary for login dropdown & tenant branding)
-    // Only Super Admin can create, modify, deactivate, or delete tenants
+    // Anyone can read active tenant metadata for branding and login routing
+    // Only Super Admin can write/create/delete tenants
     match /tenants/{tenantId} {
       allow read: if true;
       allow write: if isSuperAdmin();
     }
 
     // --- 2. Users Collection ---
-    // Read: Allowed for public lookup during synthetic roll login and member directory
-    // Create: Allowed for auth setup, admin bulk creation, or self-creation on Google sign-in
-    // Update: User can update their own profile, Tenant Admin for their tenant, or Super Admin
-    // Delete: Tenant Admin or Super Admin
+    // Read: Allowed for directory lookup and profile loading
+    // Create: Super Admin, or user creating their own profile upon authenticating
+    // Update: Super Admin, Tenant Admin for their tenant's users, or user updating their own profile
+    // Note: Students CANNOT elevate their own role or tamper with isSuperAdmin
     match /users/{userId} {
       allow read: if true;
-      allow create: if isAuthenticated() || isSuperAdmin();
-      allow update: if isSuperAdmin() || isOwner(userId) || (
+      allow create: if isSuperAdmin() || (
+        isAuthenticated() && (
+          request.auth.uid == userId ||
+          (request.resource.data.tenantId != null && isTenantAdmin(request.resource.data.tenantId))
+        )
+      );
+      allow update: if isSuperAdmin() || (
         resource.data.tenantId != null && isTenantAdmin(resource.data.tenantId)
+      ) || (
+        isOwner(userId) &&
+        // Self-updates cannot elevate role or change super admin status or change tenantId
+        request.resource.data.role == resource.data.role &&
+        request.resource.data.isSuperAdmin == resource.data.isSuperAdmin &&
+        request.resource.data.tenantId == resource.data.tenantId
       );
       allow delete: if isSuperAdmin() || (
         resource.data.tenantId != null && isTenantAdmin(resource.data.tenantId)
@@ -50,117 +75,152 @@ service cloud.firestore {
     }
 
     // --- 3. Events Collection ---
-    // Read: Public / department access
-    // Write: Super Admin, or Tenant Admin of that tenant
+    // Read: Public for showcase and campus event discovery
+    // Create, Update, Delete: Super Admin, Tenant Admin, or authorized Associate/Coordinator of that tenant
     match /events/{eventId} {
       allow read: if true;
       allow create: if isSuperAdmin() || (
-        request.resource.data.tenantId != null && isTenantAdmin(request.resource.data.tenantId)
-      ) || isAuthenticated();
+        request.resource.data.tenantId != null && isTenantAssociateOrAdmin(request.resource.data.tenantId)
+      );
       allow update, delete: if isSuperAdmin() || (
-        resource.data.tenantId != null && isTenantAdmin(resource.data.tenantId)
-      ) || isAuthenticated();
+        resource.data.tenantId != null && isTenantAssociateOrAdmin(resource.data.tenantId)
+      );
     }
 
     // --- 4. Registrations Collection ---
-    // Read: Authenticated users
-    // Create: Authenticated users
-    // Update/Delete: Super Admin, Tenant Admin, or the student who registered
+    // Read: Super Admin, Tenant Admin, event coordinators, or the registered student
+    // Create: Authenticated student registering themselves or admin
+    // Update:
+    //   - Admins / Coordinators can update anything (including attendance status)
+    //   - Students can update their registration (e.g. team members) BUT CANNOT change their status (no self-attendance validation!)
     match /registrations/{regId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
-      allow update, delete: if isSuperAdmin() || (
-        resource.data.tenantId != null && isTenantAdmin(resource.data.tenantId)
-      ) || (isAuthenticated() && resource.data.studentId == request.auth.uid);
+      allow read: if isAuthenticated() && (
+        isSuperAdmin() ||
+        (resource.data.tenantId != null && isTenantAssociateOrAdmin(resource.data.tenantId)) ||
+        resource.data.studentId == request.auth.uid
+      );
+      allow create: if isAuthenticated() && (
+        isSuperAdmin() ||
+        (request.resource.data.tenantId != null && isTenantAdmin(request.resource.data.tenantId)) ||
+        request.resource.data.studentId == request.auth.uid
+      );
+      allow update: if isSuperAdmin() || (
+        resource.data.tenantId != null && isTenantAssociateOrAdmin(resource.data.tenantId)
+      ) || (
+        isAuthenticated() && 
+        resource.data.studentId == request.auth.uid &&
+        // CRITICAL: Students CANNOT self-mark status: 'Attended' or alter verification metadata
+        request.resource.data.status == resource.data.status &&
+        request.resource.data.attendedAt == resource.data.attendedAt &&
+        request.resource.data.verifiedBy == resource.data.verifiedBy
+      );
+      allow delete: if isSuperAdmin() || (
+        resource.data.tenantId != null && isTenantAssociateOrAdmin(resource.data.tenantId)
+      ) || (
+        isAuthenticated() && resource.data.studentId == request.auth.uid
+      );
     }
 
     // --- 5. Albums (Gallery) Collection ---
     match /albums/{albumId} {
       allow read: if true;
       allow create: if isSuperAdmin() || (
-        request.resource.data.tenantId != null && isTenantAdmin(request.resource.data.tenantId)
-      ) || isAuthenticated();
+        request.resource.data.tenantId != null && isTenantAssociateOrAdmin(request.resource.data.tenantId)
+      );
       allow update, delete: if isSuperAdmin() || (
-        resource.data.tenantId != null && isTenantAdmin(resource.data.tenantId)
-      ) || isAuthenticated();
+        resource.data.tenantId != null && isTenantAssociateOrAdmin(resource.data.tenantId)
+      );
     }
 
     // --- 6. Announcements Collection ---
     match /announcements/{announcementId} {
       allow read: if true;
       allow create: if isSuperAdmin() || (
-        request.resource.data.tenantId != null && isTenantAdmin(request.resource.data.tenantId)
-      ) || isAuthenticated();
+        request.resource.data.tenantId != null && isTenantAssociateOrAdmin(request.resource.data.tenantId)
+      );
       allow update, delete: if isSuperAdmin() || (
-        resource.data.tenantId != null && isTenantAdmin(resource.data.tenantId)
-      ) || isAuthenticated();
+        resource.data.tenantId != null && isTenantAssociateOrAdmin(resource.data.tenantId)
+      );
     }
 
     // --- 7. Certificates Collection ---
-    // Read: Public (crucial for employer / QR credential verification at /verify/:id)
+    // Read: Public (crucial for QR verification and employer validation at /verify/:id)
     // Write: Super Admin or Tenant Admin
     match /certificates/{certId} {
       allow read: if true;
       allow create: if isSuperAdmin() || (
         request.resource.data.tenantId != null && isTenantAdmin(request.resource.data.tenantId)
-      ) || isAuthenticated();
+      );
       allow update, delete: if isSuperAdmin() || (
         resource.data.tenantId != null && isTenantAdmin(resource.data.tenantId)
-      ) || isAuthenticated();
+      );
     }
 
     // --- 8. Event Winners Collection ---
     match /event_winners/{winnerId} {
       allow read: if true;
       allow create: if isSuperAdmin() || (
-        request.resource.data.tenantId != null && isTenantAdmin(request.resource.data.tenantId)
-      ) || isAuthenticated();
+        request.resource.data.tenantId != null && isTenantAssociateOrAdmin(request.resource.data.tenantId)
+      );
       allow update, delete: if isSuperAdmin() || (
-        resource.data.tenantId != null && isTenantAdmin(resource.data.tenantId)
-      ) || isAuthenticated();
+        resource.data.tenantId != null && isTenantAssociateOrAdmin(resource.data.tenantId)
+      );
     }
 
     // --- 9. App Settings / Config ---
-    // Read: Public (for app branding & theme on login / landing screen)
-    // Write: Super Admin or authenticated admin
+    // Read: Public for branding and portal display
+    // Write: Super Admin or Tenant Admin for that tenant's document
     match /appSettings/{configId} {
       allow read: if true;
-      allow write: if isSuperAdmin() || isAuthenticated();
+      allow write: if isSuperAdmin() || isTenantAdmin(configId);
     }
 
-    // --- 12. Universal Platform Settings (Developer Profiles & System Config) ---
+    // --- 10. Universal Platform Settings (Developer Profiles & System Config) ---
     match /platformSettings/{settingId} {
       allow read: if true;
-      allow write: if isSuperAdmin() || isAuthenticated();
+      allow write: if isSuperAdmin();
     }
 
-    // --- 13. Enterprise Immutable Audit Logs ---
-    // Read: Super Admin
-    // Create: Allowed for authenticated users and admins to log activities
-    // Update/Delete: Only Super Admin (audit logs are tamper-resistant)
+    // --- 11. Enterprise Immutable Audit Logs ---
+    // Read: Super Admin, or Tenant Admin for their tenant
+    // Create: Authenticated users/admins performing audited actions
+    // Update/Delete: Only Super Admin (tamper-resistant)
     match /audit_logs/{logId} {
-      allow read: if isSuperAdmin() || isAuthenticated();
-      allow create: if isAuthenticated() || isSuperAdmin();
+      allow read: if isSuperAdmin() || (
+        resource.data.tenantId != null && isTenantAdmin(resource.data.tenantId)
+      );
+      allow create: if isAuthenticated();
       allow update, delete: if isSuperAdmin();
     }
 
-    // --- 14. Deleted Items Safety Vault (Zero-Loss Recoverable Backups) ---
-    // Read: Super Admin
-    // Create: Authenticated users/admins performing deletions with soft-delete backups
-    // Update (Restore) & Delete (Purge): Super Admin
+    // --- 12. Deleted Items Safety Vault (Zero-Loss Recoverable Backups) ---
+    // Read: Super Admin, or Tenant Admin for their tenant
+    // Create: Authenticated users/admins performing soft-deletions
+    // Update/Delete: Super Admin only
     match /deleted_backups/{backupId} {
-      allow read: if isSuperAdmin() || isAuthenticated();
-      allow create: if isAuthenticated() || isSuperAdmin();
+      allow read: if isSuperAdmin() || (
+        resource.data.tenantId != null && isTenantAdmin(resource.data.tenantId)
+      );
+      allow create: if isAuthenticated();
       allow update, delete: if isSuperAdmin();
     }
 
-    // --- 15. Support Tickets & Student Query Desk ---
+    // --- 13. Support Tickets & Student Query Desk ---
     match /support_tickets/{ticketId} {
-      allow read: if true;
-      allow create: if true;
-      allow update: if isAuthenticated() || isSuperAdmin();
-      allow delete: if isSuperAdmin() || isAuthenticated();
+      allow read: if isSuperAdmin() || (
+        resource.data.tenantId != null && isTenantAdmin(resource.data.tenantId)
+      ) || (
+        isAuthenticated() && resource.data.userId == request.auth.uid
+      );
+      allow create: if isAuthenticated() || request.resource.data.tenantId != null;
+      allow update: if isSuperAdmin() || (
+        resource.data.tenantId != null && isTenantAdmin(resource.data.tenantId)
+      ) || (
+        isAuthenticated() && resource.data.userId == request.auth.uid
+      );
+      allow delete: if isSuperAdmin() || (
+        resource.data.tenantId != null && isTenantAdmin(resource.data.tenantId)
+      );
     }
   }
 }
-
