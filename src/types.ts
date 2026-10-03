@@ -71,6 +71,7 @@ export interface DepartmentEvent {
   createdAt: string;
   isTeamBased?: boolean;
   maxTeamSize?: number;
+  currentRegistrations?: number;
 }
 
 export interface TeamMember {

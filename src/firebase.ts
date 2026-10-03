@@ -14,7 +14,8 @@ import {
   getDocFromServer,
   writeBatch,
   onSnapshot,
-  limit
+  limit,
+  runTransaction
 } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 import { 
@@ -1219,11 +1220,16 @@ export function subscribeToDeletedBackups(callback: (backups: DeletedBackup[]) =
 // Users
 export async function fetchUsers(tenantId?: string): Promise<UserProfile[]> {
   try {
-    const querySnapshot = await getDocs(collection(db, 'users'));
-    const rawUsers: UserProfile[] = [];
     const cleanTid = tenantId ? tenantId.trim().toLowerCase() : '';
+    const q = cleanTid
+      ? query(collection(db, 'users'), where('tenantId', '==', cleanTid))
+      : collection(db, 'users');
+    const querySnapshot = await getDocs(q);
+    const rawUsers: UserProfile[] = [];
     querySnapshot.forEach((doc) => {
-      rawUsers.push(doc.data() as UserProfile);
+      const u = doc.data() as UserProfile;
+      if (u.password) delete u.password;
+      rawUsers.push(u);
     });
 
     if (!cleanTid) {
@@ -1232,7 +1238,6 @@ export async function fetchUsers(tenantId?: string): Promise<UserProfile[]> {
 
     // Filter to tenant, strictly excluding global super admins & system admin_master
     const tenantUsers = rawUsers.filter(u => {
-      if (!u.tenantId || u.tenantId.trim().toLowerCase() !== cleanTid) return false;
       if (u.isSuperAdmin || u.uid === 'admin_master') return false;
       if (u.email && SUPER_ADMIN_EMAILS.some(e => e.toLowerCase() === u.email.trim().toLowerCase())) return false;
       return true;
@@ -1250,6 +1255,7 @@ export async function fetchUsers(tenantId?: string): Promise<UserProfile[]> {
     return tenantUsers;
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, 'users');
+    return [];
   }
 }
 
@@ -1385,18 +1391,20 @@ export async function findUserForLogin(identifier: string, tenantId?: string): P
 // Events
 export async function fetchEvents(tenantId?: string): Promise<DepartmentEvent[]> {
   try {
-    const querySnapshot = await getDocs(collection(db, 'events'));
+    const cleanTid = (tenantId || getActiveTenantId()).trim().toLowerCase();
+    const q = cleanTid
+      ? query(collection(db, 'events'), where('tenantId', '==', cleanTid))
+      : collection(db, 'events');
+    const querySnapshot = await getDocs(q);
     const events: DepartmentEvent[] = [];
     querySnapshot.forEach((doc) => {
-      const ev = doc.data() as DepartmentEvent;
-      if (!tenantId || ev.tenantId === tenantId) {
-        events.push(ev);
-      }
+      events.push(doc.data() as DepartmentEvent);
     });
     // Sort by date ascending
     return events.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, 'events');
+    return [];
   }
 }
 
@@ -1449,17 +1457,19 @@ export async function createEvent(event: DepartmentEvent): Promise<void> {
 // Registrations
 export async function fetchRegistrations(tenantId?: string): Promise<EventRegistration[]> {
   try {
-    const querySnapshot = await getDocs(collection(db, 'registrations'));
+    const cleanTid = (tenantId || getActiveTenantId()).trim().toLowerCase();
+    const q = cleanTid
+      ? query(collection(db, 'registrations'), where('tenantId', '==', cleanTid))
+      : collection(db, 'registrations');
+    const querySnapshot = await getDocs(q);
     const registrations: EventRegistration[] = [];
     querySnapshot.forEach((doc) => {
-      const reg = doc.data() as EventRegistration;
-      if (!tenantId || reg.tenantId === tenantId) {
-        registrations.push(reg);
-      }
+      registrations.push(doc.data() as EventRegistration);
     });
     return registrations;
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, 'registrations');
+    return [];
   }
 }
 
@@ -1474,6 +1484,7 @@ export async function fetchRegistrationsByStudent(studentId: string): Promise<Ev
     return registrations;
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, 'registrations');
+    return [];
   }
 }
 
@@ -1488,18 +1499,41 @@ export async function fetchRegistrationsByEvent(eventId: string): Promise<EventR
     return registrations;
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, 'registrations');
+    return [];
   }
 }
 
 export async function createRegistration(reg: EventRegistration): Promise<void> {
   const path = `registrations/${reg.registrationId}`;
   try {
-    const docRef = doc(db, 'registrations', reg.registrationId);
+    const activeTid = (reg.tenantId || getActiveTenantId()).trim().toLowerCase();
     const finalReg = {
       ...reg,
-      tenantId: reg.tenantId || getActiveTenantId()
+      tenantId: activeTid
     };
-    await setDoc(docRef, cleanUndefined(finalReg));
+
+    const regDocRef = doc(db, 'registrations', reg.registrationId);
+    const eventDocRef = doc(db, 'events', reg.eventId);
+
+    await runTransaction(db, async (transaction) => {
+      // 1. Verify capacity if tracked on event
+      const eventSnap = await transaction.get(eventDocRef);
+      if (eventSnap.exists()) {
+        const evData = eventSnap.data() as DepartmentEvent;
+        if (evData.maxParticipants && evData.maxParticipants > 0) {
+          const currentCount = evData.currentRegistrations || 0;
+          if (currentCount >= evData.maxParticipants) {
+            throw new Error(`Event "${evData.title}" is full (maximum capacity: ${evData.maxParticipants}).`);
+          }
+          transaction.update(eventDocRef, {
+            currentRegistrations: currentCount + 1
+          });
+        }
+      }
+
+      // 2. Set registration record
+      transaction.set(regDocRef, cleanUndefined(finalReg));
+    });
 
     await writeAuditLog({
       action: 'registration.create',
@@ -1510,8 +1544,9 @@ export async function createRegistration(reg: EventRegistration): Promise<void> 
       details: `Registered for event "${finalReg.eventId}" ${finalReg.isTeam ? `as team "${finalReg.teamName}"` : 'individually'}.`,
       severity: 'info'
     });
-  } catch (error) {
+  } catch (error: any) {
     handleFirestoreError(error, OperationType.CREATE, path);
+    throw error;
   }
 }
 
@@ -1523,21 +1558,24 @@ export function subscribeToRegistrations(
   const path = 'registrations';
   const filterTid = (tenantId || getActiveTenantId()).trim().toLowerCase();
   try {
-    return onSnapshot(collection(db, 'registrations'), (snapshot) => {
+    let q: any = collection(db, 'registrations');
+    if (filterTid && eventId) {
+      q = query(collection(db, 'registrations'), where('tenantId', '==', filterTid), where('eventId', '==', eventId));
+    } else if (filterTid) {
+      q = query(collection(db, 'registrations'), where('tenantId', '==', filterTid));
+    } else if (eventId) {
+      q = query(collection(db, 'registrations'), where('eventId', '==', eventId));
+    }
+
+    return onSnapshot(q, (snapshot: any) => {
       const registrations: EventRegistration[] = [];
-      snapshot.forEach((d) => {
-        const r = d.data() as EventRegistration;
-        // Tenant-scoped: only include registrations belonging to this tenant
-        if (!filterTid || (r.tenantId && r.tenantId.trim().toLowerCase() === filterTid)) {
-          if (!eventId || r.eventId === eventId) {
-            registrations.push(r);
-          }
-        }
+      snapshot.forEach((d: any) => {
+        registrations.push(d.data() as EventRegistration);
       });
       // Sort newest registration first
       registrations.sort((a, b) => new Date(b.appliedAt || 0).getTime() - new Date(a.appliedAt || 0).getTime());
       callback(registrations);
-    }, (error) => {
+    }, (error: any) => {
       console.error('Error subscribing to registrations:', error);
       handleFirestoreError(error, OperationType.LIST, path);
       callback([]);
@@ -1590,24 +1628,49 @@ export async function updateRegistrationTeamMembers(regId: string, teamMembers: 
 }
 
 export async function deleteRegistration(registrationId: string, actor?: Partial<AuditActor>): Promise<void> {
+  try {
+    const regRef = doc(db, 'registrations', registrationId);
+    const regSnap = await getDoc(regRef);
+    if (regSnap.exists()) {
+      const regData = regSnap.data() as EventRegistration;
+      if (regData.eventId) {
+        const eventRef = doc(db, 'events', regData.eventId);
+        await runTransaction(db, async (txn) => {
+          const evSnap = await txn.get(eventRef);
+          if (evSnap.exists()) {
+            const evData = evSnap.data() as DepartmentEvent;
+            const current = evData.currentRegistrations || 0;
+            if (current > 0) {
+              txn.update(eventRef, { currentRegistrations: current - 1 });
+            }
+          }
+        });
+      }
+    }
+  } catch (err) {
+    console.warn('Could not decrement event registration count:', err);
+  }
   await softDelete('registrations', registrationId, 'registration', actor);
 }
+
 
 
 // Gallery
 export async function fetchAlbums(tenantId?: string): Promise<Album[]> {
   try {
-    const querySnapshot = await getDocs(collection(db, 'albums'));
+    const cleanTid = (tenantId || getActiveTenantId()).trim().toLowerCase();
+    const q = cleanTid
+      ? query(collection(db, 'albums'), where('tenantId', '==', cleanTid))
+      : collection(db, 'albums');
+    const querySnapshot = await getDocs(q);
     const items: Album[] = [];
     querySnapshot.forEach((doc) => {
-      const alb = doc.data() as Album;
-      if (!tenantId || alb.tenantId === tenantId) {
-        items.push(alb);
-      }
+      items.push(doc.data() as Album);
     });
     return items.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, 'albums');
+    return [];
   }
 }
 
@@ -1662,17 +1725,19 @@ export async function deleteAlbum(albumId: string, actor?: Partial<AuditActor>):
 // Announcements
 export async function fetchAnnouncements(tenantId?: string): Promise<Announcement[]> {
   try {
-    const querySnapshot = await getDocs(collection(db, 'announcements'));
+    const cleanTid = (tenantId || getActiveTenantId()).trim().toLowerCase();
+    const q = cleanTid
+      ? query(collection(db, 'announcements'), where('tenantId', '==', cleanTid))
+      : collection(db, 'announcements');
+    const querySnapshot = await getDocs(q);
     const items: Announcement[] = [];
     querySnapshot.forEach((doc) => {
-      const ann = doc.data() as Announcement;
-      if (!tenantId || ann.tenantId === tenantId) {
-        items.push(ann);
-      }
+      items.push(doc.data() as Announcement);
     });
     return items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, 'announcements');
+    return [];
   }
 }
 
@@ -2250,14 +2315,14 @@ export async function issueCertificate(certData: Omit<IssuedCertificate, 'issued
 export async function fetchCertificates(tenantId?: string): Promise<IssuedCertificate[]> {
   const path = 'certificates';
   try {
-    const querySnapshot = await getDocs(collection(db, 'certificates'));
+    const filterTid = (tenantId || getActiveTenantId()).trim().toLowerCase();
+    const q = filterTid
+      ? query(collection(db, 'certificates'), where('tenantId', '==', filterTid))
+      : collection(db, 'certificates');
+    const querySnapshot = await getDocs(q);
     const certs: IssuedCertificate[] = [];
-    const filterTid = (tenantId || '').trim().toLowerCase();
     querySnapshot.forEach(docSnap => {
-      const cert = docSnap.data() as IssuedCertificate;
-      if (!filterTid || cert.tenantId === filterTid) {
-        certs.push(cert);
-      }
+      certs.push(docSnap.data() as IssuedCertificate);
     });
     // Sort by issuedAt descending
     return certs.sort((a, b) => new Date(b.issuedAt || 0).getTime() - new Date(a.issuedAt || 0).getTime());
@@ -2271,16 +2336,15 @@ export async function fetchCertificates(tenantId?: string): Promise<IssuedCertif
 export function subscribeToCertificates(callback: (certs: IssuedCertificate[]) => void, tenantId?: string): () => void {
   const path = 'certificates';
   const filterTid = (tenantId || getActiveTenantId()).trim().toLowerCase();
+  const q = filterTid
+    ? query(collection(db, 'certificates'), where('tenantId', '==', filterTid))
+    : collection(db, 'certificates');
   return onSnapshot(
-    collection(db, 'certificates'),
+    q,
     (snapshot) => {
       const certs: IssuedCertificate[] = [];
       snapshot.forEach(docSnap => {
-        const cert = docSnap.data() as IssuedCertificate;
-        // Tenant-scoped: only include certs belonging to this tenant
-        if (!filterTid || cert.tenantId === filterTid) {
-          certs.push(cert);
-        }
+        certs.push(docSnap.data() as IssuedCertificate);
       });
       certs.sort((a, b) => new Date(b.issuedAt || 0).getTime() - new Date(a.issuedAt || 0).getTime());
       callback(certs);
@@ -2535,10 +2599,14 @@ export async function revokeBatchCertificatesForEvent(
 
 // ---------------- EVENT WINNERS (HOME SPOTLIGHT) ----------------
 
-export async function fetchEventWinners(): Promise<EventWinner[]> {
+export async function fetchEventWinners(tenantId?: string): Promise<EventWinner[]> {
   const path = 'event_winners';
   try {
-    const snap = await getDocs(collection(db, 'event_winners'));
+    const filterTid = (tenantId || getActiveTenantId()).trim().toLowerCase();
+    const q = filterTid
+      ? query(collection(db, 'event_winners'), where('tenantId', '==', filterTid))
+      : collection(db, 'event_winners');
+    const snap = await getDocs(q);
     const winners: EventWinner[] = [];
     snap.forEach((d) => {
       winners.push(d.data() as EventWinner);
@@ -2556,14 +2624,13 @@ export function subscribeToEventWinners(callback: (winners: EventWinner[]) => vo
   const path = 'event_winners';
   const filterTid = (tenantId || getActiveTenantId()).trim().toLowerCase();
   try {
-    return onSnapshot(collection(db, 'event_winners'), (snapshot) => {
+    const q = filterTid
+      ? query(collection(db, 'event_winners'), where('tenantId', '==', filterTid))
+      : collection(db, 'event_winners');
+    return onSnapshot(q, (snapshot) => {
       const winners: EventWinner[] = [];
       snapshot.forEach((d) => {
-        const w = d.data() as EventWinner;
-        // Tenant-scoped: only include winners belonging to this tenant
-        if (!filterTid || w.tenantId === filterTid) {
-          winners.push(w);
-        }
+        winners.push(d.data() as EventWinner);
       });
       winners.sort((a, b) => new Date(b.addedAt || '').getTime() - new Date(a.addedAt || '').getTime());
       callback(winners);
