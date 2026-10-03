@@ -146,7 +146,13 @@ export default function LoginView({
   };
 
   const selectedTenant = tenants.find(t => t.tenantId === selectedTenantId) || tenants[0];
-  const currentTheme = resolveTenantTheme(selectedTenant?.branding || branding);
+  const displayAppName = selectedTenant
+    ? (selectedTenant.branding?.appName || selectedTenant.name || 'NOTX')
+    : 'NOTX';
+  const activeBranding: AppBranding = selectedTenant?.branding
+    ? { ...selectedTenant.branding, appName: displayAppName }
+    : { ...DEFAULT_BRANDING, appName: 'NOTX', tagline: 'Connect' };
+  const currentTheme = resolveTenantTheme(activeBranding);
 
   // Apply tenant theme to root CSS variables for dynamic live adaptation
   useEffect(() => {
@@ -751,7 +757,7 @@ export default function LoginView({
           <div className="relative z-10 flex items-center justify-between gap-3 w-full">
             <div className="flex items-center gap-3">
               <div className="p-1.5 rounded-lg bg-[var(--nb-surface)] border-2 border-[var(--nb-ink)] shadow-[2.5px_2.5px_0_var(--nb-ink)] flex-shrink-0">
-                <BrandLogo branding={selectedTenant?.branding || branding} size="md" />
+                <BrandLogo branding={activeBranding} size="md" />
               </div>
               <div>
                 <div className="flex items-center gap-1.5">
@@ -773,7 +779,7 @@ export default function LoginView({
                   className="font-display text-xl tracking-wider font-black mt-0.5"
                   style={{ color: currentTheme.heroFg }}
                 >
-                  {branding.appName || 'NOTX'}
+                  {displayAppName}
                 </p>
               </div>
             </div>
@@ -907,15 +913,15 @@ export default function LoginView({
           {/* Left: Brand + Tenant Identity */}
           <div className="flex items-center gap-3.5">
             <div className="p-1.5 rounded-lg bg-[var(--nb-surface)] border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)] flex-shrink-0">
-              <BrandLogo branding={selectedTenant?.branding || branding} size="sm" />
+              <BrandLogo branding={activeBranding} size="sm" />
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <span className="font-display text-lg tracking-wider font-black text-[var(--nb-content)]">
-                  {branding.appName || 'NOTX'}
+                  {displayAppName}
                 </span>
                 {selectedTenant?.shortCode &&
-                  (branding.appName || '').replace(/[\s\-_]+/g, '').toLowerCase() !== selectedTenant.shortCode.replace(/[\s\-_]+/g, '').toLowerCase() && (
+                  displayAppName.replace(/[\s\-_]+/g, '').toLowerCase() !== selectedTenant.shortCode.replace(/[\s\-_]+/g, '').toLowerCase() && (
                     <span
                       className="font-mono font-bold text-[10px] uppercase px-2 py-0.5 rounded border border-[var(--nb-ink)] shadow-[1px_1px_0_var(--nb-ink)]"
                       style={{ background: currentTheme.subtleBg, color: '#111111' }}
@@ -925,7 +931,7 @@ export default function LoginView({
                   )}
               </div>
               <p className="font-mono text-[10px] text-[var(--nb-secondary)] font-bold uppercase truncate max-w-xs">
-                {selectedTenant?.institution || selectedTenant?.branding?.institution || 'Academic SaaS Ecosystem'}
+                {selectedTenant?.institution || selectedTenant?.branding?.institution || 'NOTX Platform'}
               </p>
             </div>
           </div>
