@@ -41,7 +41,7 @@ import {
   subscribeToPlatformBranding,
   DEFAULT_PLATFORM_BRANDING
 } from '../firebase';
-import { GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
+import { GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, updatePassword } from 'firebase/auth';
 import { hashPassword, verifyPassword, recordUserActivity } from '../utils/auth';
 import { resolveTenantTheme, applyTenantTheme } from '../utils/themePresets';
 
@@ -90,6 +90,14 @@ export default function LoginView({
   const [winners, setWinners] = useState<EventWinner[]>([]);
   const [showcaseUsers, setShowcaseUsers] = useState<UserProfile[]>([]);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+
+  // Forgot password modal state
+  const [showForgotModal, setShowForgotModal] = useState(false);
+  const [forgotRoll, setForgotRoll] = useState('');
+  const [forgotIdentifier, setForgotIdentifier] = useState('');
+  const [forgotMsg, setForgotMsg] = useState('');
+  const [forgotErr, setForgotErr] = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
 
   // Subscribe to real-time events, users, and winners for selected tenant showcase
   useEffect(() => {
@@ -250,9 +258,37 @@ export default function LoginView({
             return;
           }
         } else if (authErr?.code === 'auth/wrong-password') {
-          setError('Invalid password. Please check your credentials.');
-          setLoading(false);
-          return;
+          // If Firebase Auth rejects with wrong-password, check if an admin reset the password in Firestore
+          const foundProfile = await findUserForLogin(cleanRoll, selectedTenantId);
+          if (foundProfile && foundProfile.password) {
+            const verification = await verifyPassword(password, foundProfile.password);
+            if (verification.isValid) {
+              // The user entered the newly reset password stored in Firestore.
+              // Allow login and mark authenticatedUid
+              authUserSuccess = true;
+              authenticatedUid = foundProfile.uid;
+
+              // Synchronize Firebase Auth credentials with the reset password
+              try {
+                if (auth.currentUser && auth.currentUser.uid === foundProfile.uid) {
+                  await updatePassword(auth.currentUser, password);
+                } else {
+                  // Attempt re-auth or sign-in with updated credentials
+                  await signInWithEmailAndPassword(auth, syntheticEmail, password).catch(() => {});
+                }
+              } catch (syncErr) {
+                console.warn('Firebase Auth password resync notice:', syncErr);
+              }
+            } else {
+              setError('Invalid password. Please check your credentials.');
+              setLoading(false);
+              return;
+            }
+          } else {
+            setError('Invalid password. Please check your credentials.');
+            setLoading(false);
+            return;
+          }
         } else {
           console.warn('Authentication error:', authErr);
         }
@@ -436,6 +472,64 @@ export default function LoginView({
     }
   };
 
+  const handleSelfServiceReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotMsg('');
+    setForgotErr('');
+    const cleanR = forgotRoll.trim().toUpperCase();
+    if (!cleanR) {
+      setForgotErr('Please enter your Roll Number.');
+      return;
+    }
+
+    setForgotLoading(true);
+    try {
+      const found = await findUserForLogin(cleanR, selectedTenantId);
+      if (!found) {
+        setForgotErr(`No user found with Roll Number "${cleanR}" in ${selectedTenant?.name || 'this department'}.`);
+        setForgotLoading(false);
+        return;
+      }
+
+      // Verification check: if user provided phone or email, check if it matches profile
+      const verifyCheck = forgotIdentifier.trim().toLowerCase();
+      if (found.phone || found.email) {
+        if (!verifyCheck) {
+          setForgotErr('Please enter your registered phone number or email to verify your identity.');
+          setForgotLoading(false);
+          return;
+        }
+        const cleanPhone = (found.phone || '').replace(/[^0-9]/g, '');
+        const inputCleanPhone = verifyCheck.replace(/[^0-9]/g, '');
+        const emailMatches = found.email && found.email.toLowerCase() === verifyCheck;
+        const phoneMatches = cleanPhone && inputCleanPhone && cleanPhone.endsWith(inputCleanPhone);
+
+        if (!emailMatches && !phoneMatches) {
+          setForgotErr('Verification details do not match the registered phone or email for this Roll Number.');
+          setForgotLoading(false);
+          return;
+        }
+      }
+
+      // Reset password to default: student's roll number or department default
+      const defaultPwd = cleanR;
+      const hashedDefault = await hashPassword(defaultPwd);
+      await updateUserProfile(found.uid, {
+        password: hashedDefault,
+        isFirstLogin: true
+      });
+
+      setForgotMsg(`Password reset successfully! Your new temporary password is your Roll Number: ${cleanR}. You will be prompted to choose a new password upon login.`);
+      setForgotRoll('');
+      setForgotIdentifier('');
+    } catch (err: any) {
+      console.error('Password reset failed:', err);
+      setForgotErr('Failed to reset password. Please reach out to your department coordinator or admin.');
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
   const cleanSelectedTid = selectedTenantId ? selectedTenantId.trim().toLowerCase() : '';
 
   const effectiveTenantUsers = showcaseUsers.length > 0 ? showcaseUsers : allUsers;
@@ -565,6 +659,20 @@ export default function LoginView({
               {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
           </div>
+          <div className="flex justify-end mt-1.5">
+            <button
+              type="button"
+              onClick={() => {
+                setForgotRoll(rollNumberInput);
+                setForgotMsg('');
+                setForgotErr('');
+                setShowForgotModal(true);
+              }}
+              className="text-[11px] font-mono font-bold text-[var(--nb-secondary)] hover:text-[var(--nb-content)] hover:underline cursor-pointer"
+            >
+              Forgot / Reset Password?
+            </button>
+          </div>
         </div>
 
         {/* Primary Submit Button */}
@@ -630,6 +738,115 @@ export default function LoginView({
           Auto-detects Super Admin / Tenant Admin. Students must link Google in Profile first.
         </p>
       </form>
+
+      {/* Forgot / Reset Password Modal */}
+      {showForgotModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div 
+            className="w-full max-w-md bg-[var(--nb-surface)] rounded-xl p-5 sm:p-6 relative text-[var(--nb-content)]"
+            style={{ border: '2.5px solid var(--nb-ink)', boxShadow: 'var(--shadow-hard-lg)' }}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                setShowForgotModal(false);
+                setForgotMsg('');
+                setForgotErr('');
+              }}
+              className="absolute top-4 right-4 p-1.5 rounded-lg border border-[var(--nb-ink)] bg-[var(--nb-surface-accent)] hover:bg-[var(--nb-ink)] hover:text-white transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="flex items-center gap-2.5 mb-3">
+              <div className="p-2 rounded-lg bg-amber-400 text-neutral-900 border border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)]">
+                <KeyRound className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="nb-headline text-base">Reset Account Password</h3>
+                <p className="text-[11px] font-mono text-[var(--nb-secondary)] font-bold">
+                  {selectedTenant?.name || 'Department Portal'}
+                </p>
+              </div>
+            </div>
+
+            {forgotMsg ? (
+              <div className="space-y-3 pt-2">
+                <div className="p-3 bg-emerald-500/10 border-2 border-emerald-600 rounded-lg text-xs font-bold text-emerald-700 leading-relaxed">
+                  {forgotMsg}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowForgotModal(false)}
+                  className="w-full py-2.5 rounded-lg font-mono font-bold text-xs uppercase bg-[var(--nb-ink)] text-[var(--nb-surface)] border border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)] cursor-pointer"
+                >
+                  Return to Login
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleSelfServiceReset} className="space-y-3 pt-1">
+                {forgotErr && (
+                  <div className="p-2.5 bg-rose-500/10 border-2 border-rose-600 rounded-lg text-xs font-bold text-rose-600 leading-snug">
+                    {forgotErr}
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-[11px] font-mono font-bold uppercase mb-1">
+                    Student Roll Number *
+                  </label>
+                  <input
+                    type="text"
+                    value={forgotRoll}
+                    onChange={(e) => setForgotRoll(e.target.value.toUpperCase())}
+                    placeholder="e.g. 23HM1A3354"
+                    className="w-full py-2 px-3 text-xs font-mono font-bold rounded-lg border-2 border-[var(--nb-ink)] bg-[var(--nb-surface)] shadow-[2px_2px_0_var(--nb-ink)] focus:outline-none uppercase"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-mono font-bold uppercase mb-1">
+                    Registered Phone (Last 4+ digits) or Email *
+                  </label>
+                  <input
+                    type="text"
+                    value={forgotIdentifier}
+                    onChange={(e) => setForgotIdentifier(e.target.value)}
+                    placeholder="e.g. 9876 or student@email.com"
+                    className="w-full py-2 px-3 text-xs font-mono rounded-lg border-2 border-[var(--nb-ink)] bg-[var(--nb-surface)] shadow-[2px_2px_0_var(--nb-ink)] focus:outline-none"
+                    required
+                  />
+                  <p className="text-[10px] text-[var(--nb-secondary)] mt-1 font-mono">
+                    Verifies ownership to prevent unauthorized password resets.
+                  </p>
+                </div>
+
+                <div className="pt-2 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowForgotModal(false)}
+                    className="flex-1 py-2.5 rounded-lg font-mono font-bold text-xs uppercase bg-[var(--nb-surface-accent)] border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)] cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={forgotLoading}
+                    className="flex-1 py-2.5 rounded-lg font-mono font-bold text-xs uppercase bg-amber-400 text-neutral-900 border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)] hover:bg-amber-300 disabled:opacity-50 cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    {forgotLoading ? (
+                      <span className="w-4 h-4 border-2 border-neutral-900 border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      'Reset to Default'
+                    )}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 

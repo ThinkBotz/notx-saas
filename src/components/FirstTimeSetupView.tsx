@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { UserProfile } from '../types';
-import { updateUserProfile } from '../firebase';
+import { updateUserProfile, auth } from '../firebase';
+import { updatePassword } from 'firebase/auth';
 import { hashPassword, recordUserActivity } from '../utils/auth';
 import { Sparkles, Phone, ShieldCheck, Loader2, Eye, EyeOff, Lock, CheckCircle2 } from 'lucide-react';
 
@@ -46,6 +47,15 @@ export default function FirstTimeSetupView({ user, onComplete }: FirstTimeSetupV
     setLoading(true);
     
     try {
+      // Sync with Firebase Auth if user is currently signed in
+      if (auth.currentUser) {
+        try {
+          await updatePassword(auth.currentUser, newPassword.trim());
+        } catch (authErr) {
+          console.warn('Firebase Auth password update warning in FirstTimeSetupView:', authErr);
+        }
+      }
+
       // Hash the password securely using salted SHA-256
       const hashedPassword = await hashPassword(newPassword);
 

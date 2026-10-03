@@ -192,23 +192,28 @@ export default function ProfileView({
       };
 
       if (newPassword.trim()) {
-        if (newPassword.trim().length < 6) {
+        const cleanPass = newPassword.trim();
+        if (cleanPass.length < 6) {
           alert('New password must be at least 6 characters long.');
           return;
         }
         if (auth.currentUser) {
           try {
-            await updatePassword(auth.currentUser, newPassword.trim());
+            await updatePassword(auth.currentUser, cleanPass);
           } catch (passErr: any) {
             if (passErr?.code === 'auth/requires-recent-login') {
               alert('Security requirement: Please sign in again before changing your password.');
               return;
             }
             console.error('Password update in Firebase Auth failed:', passErr);
-            alert('Failed to update password. Please check your credentials or try again.');
+            alert('Failed to update password in authentication. Please re-authenticate and try again.');
             return;
           }
         }
+        // Securely hash and synchronize password to Firestore profile as well
+        const hashed = await hashPassword(cleanPass);
+        updates.password = hashed;
+        updates.isFirstLogin = false;
       }
 
       await updateUserProfile(user.uid, updates);

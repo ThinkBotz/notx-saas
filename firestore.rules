@@ -30,12 +30,52 @@ service cloud.firestore {
       );
     }
 
+    function getAssociateUser(tenantId) {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
     function isTenantAssociateOrAdmin(tenantId) {
       return isTenantAdmin(tenantId) || (
         isAuthenticated() &&
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'associate', 'coordinator', 'president']
+        getAssociateUser(tenantId).tenantId == tenantId &&
+        getAssociateUser(tenantId).role in ['admin', 'associate', 'coordinator', 'president']
+      );
+    }
+
+    function canManageEvents(tenantId) {
+      return isTenantAdmin(tenantId) || (
+        isAuthenticated() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        getAssociateUser(tenantId).tenantId == tenantId &&
+        (
+          getAssociateUser(tenantId).role in ['admin', 'coordinator', 'president'] ||
+          (getAssociateUser(tenantId).role == 'associate' && getAssociateUser(tenantId).powers.canManageEvents == true)
+        )
+      );
+    }
+
+    function canManageAnnouncements(tenantId) {
+      return isTenantAdmin(tenantId) || (
+        isAuthenticated() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        getAssociateUser(tenantId).tenantId == tenantId &&
+        (
+          getAssociateUser(tenantId).role in ['admin', 'coordinator', 'president'] ||
+          (getAssociateUser(tenantId).role == 'associate' && getAssociateUser(tenantId).powers.canManageAnnouncements == true)
+        )
+      );
+    }
+
+    function canManageGallery(tenantId) {
+      return isTenantAdmin(tenantId) || (
+        isAuthenticated() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        getAssociateUser(tenantId).tenantId == tenantId &&
+        (
+          getAssociateUser(tenantId).role in ['admin', 'coordinator', 'president'] ||
+          (getAssociateUser(tenantId).role == 'associate' && getAssociateUser(tenantId).powers.canManageGallery == true)
+        )
       );
     }
 
@@ -48,12 +88,17 @@ service cloud.firestore {
     }
 
     // --- 2. Users Collection ---
-    // Read: Allowed for directory lookup and profile loading
+    // Read:
+    //   - Super Admins can read all profiles across the platform
+    //   - Authenticated users can read their own profile document
+    //   - Tenant Admins, Associates, and Coordinators can read users within their own department/tenant
     // Create: Super Admin, or user creating their own profile upon authenticating
     // Update: Super Admin, Tenant Admin for their tenant's users, or user updating their own profile
     // Note: Students CANNOT elevate their own role or tamper with isSuperAdmin
     match /users/{userId} {
-      allow read: if true;
+      allow read: if isSuperAdmin() || 
+        (isAuthenticated() && request.auth.uid == userId) ||
+        (resource.data.tenantId != null && isTenantAssociateOrAdmin(resource.data.tenantId));
       allow create: if isSuperAdmin() || (
         isAuthenticated() && (
           request.auth.uid == userId ||
@@ -80,10 +125,10 @@ service cloud.firestore {
     match /events/{eventId} {
       allow read: if true;
       allow create: if isSuperAdmin() || (
-        request.resource.data.tenantId != null && isTenantAssociateOrAdmin(request.resource.data.tenantId)
+        request.resource.data.tenantId != null && canManageEvents(request.resource.data.tenantId)
       );
       allow update, delete: if isSuperAdmin() || (
-        resource.data.tenantId != null && isTenantAssociateOrAdmin(resource.data.tenantId)
+        resource.data.tenantId != null && canManageEvents(resource.data.tenantId)
       );
     }
 
@@ -125,10 +170,10 @@ service cloud.firestore {
     match /albums/{albumId} {
       allow read: if true;
       allow create: if isSuperAdmin() || (
-        request.resource.data.tenantId != null && isTenantAssociateOrAdmin(request.resource.data.tenantId)
+        request.resource.data.tenantId != null && canManageGallery(request.resource.data.tenantId)
       );
       allow update, delete: if isSuperAdmin() || (
-        resource.data.tenantId != null && isTenantAssociateOrAdmin(resource.data.tenantId)
+        resource.data.tenantId != null && canManageGallery(resource.data.tenantId)
       );
     }
 
@@ -136,10 +181,10 @@ service cloud.firestore {
     match /announcements/{announcementId} {
       allow read: if true;
       allow create: if isSuperAdmin() || (
-        request.resource.data.tenantId != null && isTenantAssociateOrAdmin(request.resource.data.tenantId)
+        request.resource.data.tenantId != null && canManageAnnouncements(request.resource.data.tenantId)
       );
       allow update, delete: if isSuperAdmin() || (
-        resource.data.tenantId != null && isTenantAssociateOrAdmin(resource.data.tenantId)
+        resource.data.tenantId != null && canManageAnnouncements(resource.data.tenantId)
       );
     }
 

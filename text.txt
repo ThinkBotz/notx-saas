@@ -1,0 +1,410 @@
+Listed directory better-cse-aiml
+Viewed README.md:1-250
+Viewed README.md:251-404
+
+Based on the comprehensive discovery audit of **NOTX Connect** and its design specifications, here is the structured, phase-by-phase strategic plan to bring the platform to enterprise-grade stability, security, and scalability.
+
+---
+
+# NOTX Strategic Engineering & Remediation Plan
+
+```
+PHASE 1: Security & Privacy Hardening (Immediate P0)
+                   │
+                   ▼
+PHASE 2: Architectural Modularization & Data Layer Refactoring
+                   │
+                   ▼
+PHASE 3: Media & Authentication Infrastructure Upgrade
+                   │
+                   ▼
+PHASE 4: Operational Reliability, Concurrency & CI/CD Testing
+```
+
+---
+
+## Phase 1: Security & Privacy Hardening (Immediate P0)
+
+**Goal:** Eliminate student PII data leaks and enforce strict multi-tenant boundaries at the database layer.
+
+1. **Remediate Open User Read Rule in Firestore**
+   - **Problem:** `match /users/{userId} { allow read: if true; }` allows unauthenticated access to the entire user directory across all colleges.
+   - **Action:** Update [firestore.rules](file:///c:/Users/lenovo_samxiao/Downloads/better-cse-aiml/better-cse-aiml/firestore.rules) to:
+     - Require authentication: `request.auth != null`.
+     - Allow students to read/write only their own document (`request.auth.uid == userId`).
+     - Allow Admins/SuperAdmins to read users matching their `tenantId` or platform scope.
+2. **Eliminate Global Unfiltered Snapshot in Client**
+   - **Problem:** In [src/App.tsx](file:///c:/Users/lenovo_samxiao/Downloads/better-cse-aiml/better-cse-aiml/src/App.tsx#L514), `onSnapshot(collection(db, 'users'))` downloads all users into client memory.
+   - **Action:** Scope queries by `where('tenantId', '==', currentTenantId)` and move user list subscriptions exclusively into [AdminPanelView.tsx](file:///c:/Users/lenovo_samxiao/Downloads/better-cse-aiml/better-cse-aiml/src/components/AdminPanelView.tsx) with pagination limits (`limit(50)`), preventing non-admin clients from fetching directory data.
+3. **Database-Level RBAC for Associates & Coordinators**
+   - Enforce specific `associatePowers` (`canScanAttendance`, `canCreateEvents`) inside [firestore.rules](file:///c:/Users/lenovo_samxiao/Downloads/better-cse-aiml/better-cse-aiml/firestore.rules) rather than relying exclusively on frontend UI button hiding.
+
+---
+
+## Phase 2: Architectural Modularization & Data Access Refactoring
+
+**Goal:** Decompose the 3,132-line monolithic [src/firebase.ts](file:///c:/Users/lenovo_samxiao/Downloads/better-cse-aiml/better-cse-aiml/src/firebase.ts) into domain services.
+
+1. **Modularize the Services Layer**
+   - Split `src/firebase.ts` into isolated modules:
+     - `src/services/auth.service.ts`: Firebase Auth, synthetic email mappings, password updates.
+     - `src/services/events.service.ts`: Event CRUD, capacity checks, transactions.
+     - `src/services/registrations.service.ts`: Solo/team registrations, passes, attendance check-ins.
+     - `src/services/certificates.service.ts`: Template rendering, batch creation, verification lookups.
+     - `src/services/vault.service.ts`: Cascade soft-deletes and recovery restores.
+2. **Unified State Management & Query Caching**
+   - Replace redundant real-time snapshot listeners with dedicated hooks (`useTenantEvents`, `useUserRegistrations`) to prevent duplicate Firestore reads on tab switches.
+
+---
+
+## Phase 3: Media & Authentication Infrastructure Upgrade
+
+**Goal:** Secure image uploads and streamline collegiate user identity.
+
+1. **Secure Cloudinary Media Ingestion**
+   - **Problem:** The unsigned preset (`notx_preset`) allows unauthenticated file uploads to Cloudinary storage.
+   - **Action:** Transition to signed uploads using an ephemeral token endpoint (e.g., lightweight Firebase Cloud Function or Cloudflare Worker) or restrict preset IP/domain origins in the Cloudinary dashboard.
+   - Implement automatic Cloudinary asset deletion when an album or banner is permanently purged from the recovery vault.
+2. **Normalize Identity & Password Storage**
+   - Deprecate custom SHA-256 hashes stored in Firestore user documents once all legacy users migrate to native Firebase Auth credentials.
+   - Introduce support for real institutional domains (`@college.edu`) alongside roll numbers for automated self-service password resets.
+
+---
+
+## Phase 4: Operational Reliability, Concurrency & CI/CD Testing
+
+**Goal:** Guarantee system uptime during high-traffic symposium registrations and attendance scans.
+
+1. **Attendance & Registration Resiliency**
+   - Maintain the existing atomic Firestore `runTransaction` retry engine for event capacity limits.
+   - Enhance [AttendanceScanner.tsx](file:///c:/Users/lenovo_samxiao/Downloads/better-cse-aiml/better-cse-aiml/src/components/AttendanceScanner.tsx) with offline scan queueing (`IndexedDB`) so coordinators can continue checking in students even during intermittent venue Wi-Fi drops.
+2. **Automated Testing Suite**
+   - Implement Vitest unit tests for:
+     - Password hashing & ticket signature verification (`src/utils/auth.ts`).
+     - Atomic capacity limit logic in event registrations.
+     - Soft-delete backup cascading and restoration.
+3. **CI/CD Pipeline Setup**
+   - Configure a GitHub Actions workflow (`.github/workflows/ci.yml`) to enforce `npm run lint` (`tsc --noEmit`), unit test validation, and build verification on all pull requests to `main`.
+
+---
+
+### Ready for Next Steps
+When you are ready to begin execution, let me know which phase or specific task you would like to tackle first (e.g., **Phase 1: Securing Firestore Rules & User Query Scoping**). No changes have been made to the repository.
+
+
+
+
+Searched for "changePassword"
+Searched for "password"
+Listed directory components
+Searched for "password"
+Searched for "password"
+Searched for "pass"
+Searched for "verifyPassword"
+Viewed LoginView.tsx:190-260
+Searched for "updatePassword"
+Viewed ProfileView.tsx:180-250
+Viewed ProfileView.tsx:140-180
+Viewed ProfileView.tsx:80-140
+Searched for "newPassword"
+Viewed ProfileView.tsx:70-100
+Searched for "setNewPassword"
+Viewed ProfileView.tsx:195-225
+Viewed ProfileView.tsx:380-450
+Viewed ProfileView.tsx:450-560
+Searched for "resetPassword"
+Viewed AdminPanelView.tsx:1035-1065
+Viewed LoginView.tsx:200-250
+Viewed ProfileView.tsx:190-220
+
+I have investigated the codebase and traced the exact root cause of both issues you described:
+
+---
+
+### Root Cause Analysis
+
+#### 1. Why "Update Password" still requires / uses the present password
+In [src/components/ProfileView.tsx](file:///c:/Users/lenovo_samxiao/Downloads/better-cse-aiml/better-cse-aiml/src/components/ProfileView.tsx#L194-L215):
+```typescript
+if (newPassword.trim()) {
+  if (auth.currentUser) {
+    await updatePassword(auth.currentUser, newPassword.trim());
+  }
+}
+await updateUserProfile(user.uid, updates);
+```
+- **The Bug:** `updateUserProfile(user.uid, updates)` only saves profile fields (`name`, `email`, `phone`, `profile_pic`). **It never hashes or saves the new password into the Firestore user document** (`updates.password`).
+- **The Consequence:** If the user logs in via roll number and falls into the Firestore fallback in [src/components/LoginView.tsx](file:///c:/Users/lenovo_samxiao/Downloads/better-cse-aiml/better-cse-aiml/src/components/LoginView.tsx#L209-L215), the system checks against `foundProfile.password`. Because Firestore still holds the old password/preset hash, the user is forced to keep using the old password, or Firebase Auth and Firestore become desynchronized.
+- Furthermore, Firebase Auth requires `auth/requires-recent-login` if the user's session is older than a few minutes, causing silent failures or alert errors.
+
+#### 2. Why "Reset Password" is missing or broken
+- In [src/components/AdminPanelView.tsx](file:///c:/Users/lenovo_samxiao/Downloads/better-cse-aiml/better-cse-aiml/src/components/AdminPanelView.tsx#L1040-L1054), `handleResetPassword` only writes `${roll}_RESET` to Firestore (`updateUserProfile(uid, { password: hashedTempPwd })`). It **does not update Firebase Auth** because client-side admin apps cannot change another user's Firebase Auth password without backend Admin SDK privileges.
+- There is **no self-service "Forgot / Reset Password" option** on the [LoginView.tsx](file:///c:/Users/lenovo_samxiao/Downloads/better-cse-aiml/better-cse-aiml/src/components/LoginView.tsx) screen for students because student emails are synthetic (`{roll}.{tenantId}@notx.com`), meaning standard Firebase `sendPasswordResetEmail` cannot reach a real inbox unless an admin or secondary mechanism is provided.
+
+---
+
+# Action Plan: Fixing Password Update & Adding Reset Option
+
+```
+STEP 1: Fix Password Update Synchronization (ProfileView.tsx & auth.ts)
+                          │
+                          ▼
+STEP 2: Fix Login Fallback Verification (LoginView.tsx)
+                          │
+                          ▼
+STEP 3: Add Self-Service Reset Option on Login Screen (LoginView.tsx)
+                          │
+                          ▼
+STEP 4: Fix Admin Password Reset Flow (AdminPanelView.tsx)
+```
+
+---
+
+### Step 1: Fix Password Update in User Profile
+- In [src/components/ProfileView.tsx](file:///c:/Users/lenovo_samxiao/Downloads/better-cse-aiml/better-cse-aiml/src/components/ProfileView.tsx):
+  1. When updating `newPassword`:
+     - Update Firebase Auth via `updatePassword(auth.currentUser, newPassword)`.
+     - Also hash the new password using `hashPassword(newPassword)` and store `updates.password = hashedPassword` in Firestore via `updateUserProfile`.
+     - Clear any `isFirstLogin: false` flag.
+  2. If `auth/requires-recent-login` is thrown, prompt the user with a clean re-authentication modal asking for their current password so the update succeeds seamlessly.
+
+### Step 2: Fix Login Credential Synchronization
+- In [src/components/LoginView.tsx](file:///c:/Users/lenovo_samxiao/Downloads/better-cse-aiml/better-cse-aiml/src/components/LoginView.tsx):
+  - Ensure that when a user logs in with their newly updated password, both Firebase Auth and Firestore stay synchronized, and legacy hashes are wiped once Firebase Auth credentials are fully updated.
+
+### Step 3: Implement the "Reset Password" Option on Login Screen
+- On [LoginView.tsx](file:///c:/Users/lenovo_samxiao/Downloads/better-cse-aiml/better-cse-aiml/src/components/LoginView.tsx):
+  1. Add a **"Forgot / Reset Password?"** button beneath the password field.
+  2. When clicked, open a dedicated **Reset Password Dialog**:
+     - **For Students:** Verify Roll Number + Department + registered phone or personal email, or allow resetting back to the institution's default/preset password (or prompt to request an instant admin reset).
+     - **For Users with Linked Email / Google:** Trigger Firebase Auth's standard password reset flow or Google re-authentication.
+
+### Step 4: Fix Admin Reset Password in Admin Panel
+- In [src/components/AdminPanelView.tsx](file:///c:/Users/lenovo_samxiao/Downloads/better-cse-aiml/better-cse-aiml/src/components/AdminPanelView.tsx):
+  - When an Admin clicks "Reset Password" for a student:
+    - Update the Firestore profile password hash to the temporary password.
+    - Set `isFirstLogin: true`.
+    - If the user has a Firebase Auth account, mark a flag so that on their next login with the temporary password, [LoginView.tsx](file:///c:/Users/lenovo_samxiao/Downloads/better-cse-aiml/better-cse-aiml/src/components/LoginView.tsx) automatically updates their Firebase Auth password to match.
+
+---
+
+### Next Step
+Would you like me to proceed with implementing these fixes directly into the code?
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+check if my app is followinf this or nowt and do i need this and dont excute this suggest make analsis and make report and reply me in text only For **NOTX**, I would **divide it into proper routes/pages**, but **keep it as one React SPA**.
+
+Those are not opposites.
+
+### Recommended architecture
+
+```text
+NOTX
+│
+└── One React SPA
+      │
+      ├── /:tenantId/events
+      ├── /:tenantId/registrations
+      ├── /:tenantId/attendance
+      ├── /:tenantId/users
+      ├── /:tenantId/certificates
+      ├── /:tenantId/winners
+      ├── /:tenantId/announcements
+      ├── /:tenantId/gallery
+      ├── /:tenantId/analytics
+      ├── /:tenantId/audit-logs
+      ├── /:tenantId/settings
+      └── /:tenantId/support
+```
+
+React Router can switch between these without doing a traditional full-page browser reload.
+
+### Why this is better than your current giant page
+
+Your discovery report shows that `App.tsx` is currently acting as the **master application state + view orchestrator**, including global listeners and many views. 
+
+If everything remains inside one giant `App.tsx`:
+
+```text
+App.tsx
+ ├── Dashboard
+ ├── Events
+ ├── Users
+ ├── Attendance
+ ├── Certificates
+ ├── Gallery
+ ├── Admin
+ ├── Support
+ └── ...
+```
+
+it becomes harder to:
+
+* load only the data needed by the current screen
+* protect individual sections
+* manage permissions
+* maintain code
+* test features
+* lazy-load heavy modules
+* avoid unnecessary renders
+
+### Instead
+
+Have a small application shell:
+
+```text
+App
+│
+├── AuthProvider
+│
+└── Router
+      │
+      └── TenantLayout
+            │
+            ├── Sidebar
+            ├── Header
+            │
+            └── Outlet
+                  │
+                  ├── EventsPage
+                  ├── UsersPage
+                  ├── AttendancePage
+                  └── ...
+```
+
+Then each page owns its feature data.
+
+For example:
+
+```text
+/:tenantId/users
+        ↓
+UsersPage
+        ↓
+userService
+        ↓
+Firestore
+        ↓
+where("tenantId", "==", tenantId)
+        ↓
+paginated users
+```
+
+Instead of:
+
+```text
+App starts
+   ↓
+download every user
+   ↓
+store every user
+   ↓
+Users page filters them
+```
+
+### And you don't need separate HTML pages
+
+This is the important part.
+
+**Don't turn NOTX into a traditional multi-page website.**
+
+Keep:
+
+> **One React SPA + multiple URL routes + feature pages.**
+
+This gives you the best fit for your application.
+
+### For your current refactor
+
+I'd structure it roughly like:
+
+```text
+src/
+├── app/
+│   ├── App.tsx
+│   ├── router.tsx
+│   └── layouts/
+│       └── TenantLayout.tsx
+│
+├── pages/
+│   ├── EventsPage.tsx
+│   ├── UsersPage.tsx
+│   ├── RegistrationsPage.tsx
+│   ├── AttendancePage.tsx
+│   ├── CertificatesPage.tsx
+│   ├── WinnersPage.tsx
+│   ├── AnnouncementsPage.tsx
+│   ├── GalleryPage.tsx
+│   ├── AnalyticsPage.tsx
+│   ├── AuditLogsPage.tsx
+│   ├── SettingsPage.tsx
+│   └── SupportPage.tsx
+│
+├── features/
+│   ├── users/
+│   ├── events/
+│   ├── registrations/
+│   ├── attendance/
+│   ├── certificates/
+│   └── ...
+│
+├── services/
+│   ├── users/
+│   ├── events/
+│   ├── registrations/
+│   └── ...
+│
+└── components/
+```
+
+**So my recommendation: keep the SPA, but divide the application into real route-based pages.** That directly helps solve the global-data-loading and giant-`App.tsx` problems without requiring a complete rewrite. reply me in text only 

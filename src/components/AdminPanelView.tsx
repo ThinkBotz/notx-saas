@@ -317,6 +317,53 @@ export default function AdminPanelView({
     return () => unsub();
   }, [activeTenantIdResolved]);
 
+  useEffect(() => {
+    const syncOfflineAttendanceQueue = async () => {
+      const queueKey = 'notx_offline_attendance_queue';
+      try {
+        const rawQueue = localStorage.getItem(queueKey);
+        if (!rawQueue) return;
+        const queue: Array<{ registrationId: string; status: 'Attended'; verifiedBy?: string }> = JSON.parse(rawQueue);
+        if (!queue || queue.length === 0) return;
+
+        const remainingQueue: typeof queue = [];
+        let syncedCount = 0;
+
+        for (const item of queue) {
+          try {
+            await updateRegistrationStatus(item.registrationId, item.status, item.verifiedBy);
+            syncedCount++;
+          } catch (e) {
+            remainingQueue.push(item);
+          }
+        }
+
+        if (remainingQueue.length > 0) {
+          localStorage.setItem(queueKey, JSON.stringify(remainingQueue));
+        } else {
+          localStorage.removeItem(queueKey);
+        }
+
+        if (syncedCount > 0) {
+          setFeedbackMsg(`Synced ${syncedCount} offline attendance check-ins to database!`);
+          setTimeout(() => setFeedbackMsg(''), 4000);
+          refreshData();
+        }
+      } catch (e) {
+        console.warn('Error processing offline attendance queue:', e);
+      }
+    };
+
+    window.addEventListener('online', syncOfflineAttendanceQueue);
+    if (navigator.onLine) {
+      syncOfflineAttendanceQueue();
+    }
+
+    return () => {
+      window.removeEventListener('online', syncOfflineAttendanceQueue);
+    };
+  }, []);
+
 
   const handleToggleCertificates = async (newVal?: boolean) => {
     const nextVal = newVal !== undefined ? newVal : !isCertificatesEnabled;
@@ -1185,10 +1232,28 @@ export default function AdminPanelView({
         playFeedbackChime('success');
         refreshData();
       } catch (err) {
-        console.error(err);
-        setScanResultMsg("Database error during check-in.");
-        setScanResultType('error');
-        playFeedbackChime('error');
+        console.warn('Network write failed, queuing attendance scan offline:', err);
+        try {
+          // Store offline queued check-in to localStorage for automatic sync
+          const queueKey = 'notx_offline_attendance_queue';
+          const existingQueue = JSON.parse(localStorage.getItem(queueKey) || '[]');
+          existingQueue.push({
+            registrationId: reg.registrationId,
+            status: 'Attended',
+            verifiedBy: currentUser.email,
+            studentName: reg.studentName,
+            rollNumber: reg.rollNumber || cleanInput,
+            timestamp: new Date().toISOString()
+          });
+          localStorage.setItem(queueKey, JSON.stringify(existingQueue));
+          setScanResultMsg(`Saved Offline: ${reg.studentName} (${reg.rollNumber || cleanInput}) queued. Will sync automatically when online.`);
+          setScanResultType('info');
+          playFeedbackChime('success');
+        } catch {
+          setScanResultMsg("Database error during check-in.");
+          setScanResultType('error');
+          playFeedbackChime('error');
+        }
       }
     } else {
       // Check if registration exists for another event

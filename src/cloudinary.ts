@@ -2,6 +2,22 @@ export const uploadToCloudinary = async (file: File, uploadPresetOverride?: stri
   const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
   const uploadPreset = uploadPresetOverride || import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
 
+  if (!file) {
+    throw new Error('No file provided for upload.');
+  }
+
+  // Validate allowed image MIME types
+  const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml'];
+  if (!validTypes.includes(file.type)) {
+    throw new Error(`Invalid file type "${file.type}". Only JPEG, PNG, WebP, GIF, and SVG images are permitted.`);
+  }
+
+  // Enforce 10MB maximum file size limit
+  const MAX_SIZE_BYTES = 10 * 1024 * 1024;
+  if (file.size > MAX_SIZE_BYTES) {
+    throw new Error(`File size ${(file.size / (1024 * 1024)).toFixed(1)}MB exceeds maximum allowed limit of 10MB.`);
+  }
+
   if (!cloudName || !uploadPreset || uploadPreset.trim() === '' || uploadPreset.includes('your_unsigned_upload_preset_here')) {
     throw new Error('Please configure a valid Unsigned Upload Preset in .env (VITE_CLOUDINARY_UPLOAD_PRESET)');
   }
