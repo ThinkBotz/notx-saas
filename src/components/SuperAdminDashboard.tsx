@@ -60,9 +60,9 @@ import {
   Bug,
   CheckCheck,
   AlertOctagon,
-  Palette,
   Sliders,
-  Check
+  Save,
+  Cpu
 } from 'lucide-react';
 import { 
   Tenant, 
@@ -2402,9 +2402,9 @@ export default function SuperAdminDashboard({
                     </button>
                     <button
                       type="button"
-                      onClick={() => setPlatformBrandingForm(prev => ({ ...prev, logoType: 'image' }))}
+                      onClick={() => setPlatformBrandingForm(prev => ({ ...prev, logoType: 'custom' }))}
                       className={`px-3 py-1.5 rounded-lg border text-xs font-mono font-bold uppercase cursor-pointer transition-all ${
-                        platformBrandingForm.logoType === 'image'
+                        platformBrandingForm.logoType === 'custom'
                           ? 'border-[var(--nb-ink)] bg-indigo-600 text-white shadow-[2px_2px_0_var(--nb-ink)]'
                           : 'border-[var(--nb-divider)] bg-[var(--nb-surface-accent)] text-[var(--nb-secondary)]'
                       }`}
@@ -2462,7 +2462,7 @@ export default function SuperAdminDashboard({
                       </div>
                       <ImageUploader
                         onUploadSuccess={(urls) => {
-                          if (urls[0]) setPlatformBrandingForm(prev => ({ ...prev, logoImageUrl: urls[0], logoType: 'image' }));
+                          if (urls[0]) setPlatformBrandingForm(prev => ({ ...prev, logoImageUrl: urls[0], logoType: 'custom' }));
                         }}
                         maxFiles={1}
                         buttonLabel="Upload Logo to Cloudinary"

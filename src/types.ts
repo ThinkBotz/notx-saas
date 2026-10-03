@@ -565,7 +565,7 @@ export interface DeletedBackup {
 }
 
 export type SystemLogLevel = 'fatal' | 'error' | 'warn' | 'info';
-export type SystemLogCategory = 'react_crash' | 'network' | 'storage' | 'database' | 'security' | 'general';
+export type SystemLogCategory = 'react_crash' | 'network' | 'storage' | 'database' | 'security' | 'general' | 'unhandled_window_error' | 'unhandled_promise_rejection';
 
 export interface SystemLogContext {
   tenantId?: string;
