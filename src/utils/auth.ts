@@ -108,3 +108,33 @@ export function clearUserSession(): void {
     // Ignore
   }
 }
+
+/**
+ * Generates an 8-character verification signature for event tickets
+ */
+export async function generateTicketSignature(
+  regId: string,
+  eventId: string,
+  roll: string,
+  tenantId: string
+): Promise<string> {
+  const payload = `notx_ticket:${tenantId}:${eventId}:${regId}:${roll}`;
+  const fullHash = await hashPassword(payload);
+  return fullHash.substring(0, 8).toUpperCase();
+}
+
+/**
+ * Validates a ticket signature
+ */
+export async function verifyTicketSignature(
+  regId: string,
+  eventId: string,
+  roll: string,
+  tenantId: string,
+  sig: string
+): Promise<boolean> {
+  if (!sig) return false;
+  const expected = await generateTicketSignature(regId, eventId, roll, tenantId);
+  return expected.toUpperCase() === sig.trim().toUpperCase();
+}
+

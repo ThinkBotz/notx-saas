@@ -103,7 +103,7 @@ import EditBrandingModal from './EditBrandingModal';
 import BrandLogo from './BrandLogo';
 import HoldButton from './HoldButton';
 import { AppBranding, DEFAULT_BRANDING } from '../types';
-import { hashPassword } from '../utils/auth';
+import { hashPassword, verifyTicketSignature } from '../utils/auth';
 
 // Helper: Check if today is strictly before the event date (local date comparison)
 function isBeforeEventDate(eventDateStr?: string): boolean {
@@ -1105,7 +1105,36 @@ export default function AdminPanelView({
     if (parsed.startsWith('{') && parsed.endsWith('}')) {
       try {
         const obj = JSON.parse(parsed);
-        parsed = obj.rollNumber || obj.roll || obj.registrationId || obj.uid || parsed;
+
+        // 1. Cross-event check: prevent using a pass from another event
+        if (obj.eventId && selectedEventId && obj.eventId !== selectedEventId) {
+          setScanResultMsg("Invalid Pass: This QR pass was issued for a different event.");
+          setScanResultType('error');
+          playFeedbackChime('error');
+          return;
+        }
+
+        // 2. Cross-tenant check: prevent using a pass from another department
+        const currentTid = (activeTenantId || currentUser.tenantId || '').trim().toLowerCase();
+        if (obj.tenantId && currentTid && obj.tenantId.trim().toLowerCase() !== currentTid) {
+          setScanResultMsg("Invalid Pass: This QR pass belongs to a different department.");
+          setScanResultType('error');
+          playFeedbackChime('error');
+          return;
+        }
+
+        // 3. Cryptographic signature verification for signed passes
+        if (obj.sig && obj.regId && obj.eventId && obj.roll && obj.tenantId) {
+          const isValidSig = await verifyTicketSignature(obj.regId, obj.eventId, obj.roll, obj.tenantId, obj.sig);
+          if (!isValidSig) {
+            setScanResultMsg("Fraud Warning: Cryptographic pass signature is invalid. Pass may be tampered.");
+            setScanResultType('error');
+            playFeedbackChime('error');
+            return;
+          }
+        }
+
+        parsed = obj.regId || obj.registrationId || obj.rollNumber || obj.roll || obj.uid || parsed;
       } catch (e) { }
     } else if (parsed.startsWith('http://') || parsed.startsWith('https://')) {
       try {

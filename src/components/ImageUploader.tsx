@@ -37,6 +37,18 @@ export default function ImageUploader({
       return;
     }
 
+    // Validate file type and size (max 10MB per image)
+    for (const file of files) {
+      if (!file.type.startsWith('image/')) {
+        setError(`"${file.name}" is not a valid image file.`);
+        return;
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        setError(`"${file.name}" exceeds the 10MB size limit. Please choose a smaller image.`);
+        return;
+      }
+    }
+
     setIsUploading(true);
     setError('');
 

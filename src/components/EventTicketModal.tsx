@@ -7,6 +7,7 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 import { fireConfetti } from '../utils/confetti';
 import { DepartmentEvent, EventRegistration, UserProfile, AppBranding, DEFAULT_BRANDING } from '../types';
+import { generateTicketSignature } from '../utils/auth';
 
 interface EventTicketModalProps {
   event: DepartmentEvent;
@@ -31,9 +32,44 @@ export default function EventTicketModal({
   const regCode = (registration.registrationId || '0000').replace(/[^a-zA-Z0-9]/g, '').substring(0, 4).toUpperCase();
   const ticketNumber = `NOTX-${roll}-${eventCode}-${regCode}`;
 
-  // Smart QR payload compatible with Admin Quick Check-in Scanner
-  // The scanner accepts raw roll number, JSON, or URL
-  const qrPayload = roll ? roll.toUpperCase() : registration.registrationId;
+  // Smart signed QR payload compatible with Admin Quick Check-in Scanner
+  const [qrPayload, setQrPayload] = useState<string>(roll ? roll.toUpperCase() : registration.registrationId);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function signPayload() {
+      const activeTid = event.tenantId || registration.tenantId || user.tenantId || '';
+      try {
+        const sig = await generateTicketSignature(
+          registration.registrationId,
+          event.eventId,
+          roll,
+          activeTid
+        );
+        const signedTicketObj = {
+          type: 'NOTX_TICKET',
+          ticket: ticketNumber,
+          regId: registration.registrationId,
+          roll: roll.toUpperCase(),
+          eventId: event.eventId,
+          tenantId: activeTid,
+          sig
+        };
+        if (isMounted) {
+          setQrPayload(JSON.stringify(signedTicketObj));
+        }
+      } catch {
+        if (isMounted) {
+          setQrPayload(roll ? roll.toUpperCase() : registration.registrationId);
+        }
+      }
+    }
+    signPayload();
+    return () => {
+      isMounted = false;
+    };
+  }, [registration.registrationId, event.eventId, roll, event.tenantId, registration.tenantId, user.tenantId, ticketNumber]);
+
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&color=000000&bgcolor=ffffff&margin=1&data=${encodeURIComponent(qrPayload)}`;
 
   const handleCopyTicket = () => {
