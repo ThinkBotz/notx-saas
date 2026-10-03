@@ -17,6 +17,7 @@ import {
 
 import { onSnapshot, collection, doc, query, where } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { db, auth, fetchUserById } from './firebase';
 import { UserProfile, DepartmentEvent, EventRegistration, Album, Announcement, AppConfig, SupportInfo, DEFAULT_SUPPORT_INFO, AppBranding, DEFAULT_BRANDING, Tenant, SUPER_ADMIN_EMAILS } from './types';
 import BrandLogo, { ACCENT_THEMES, getCssAccent, getCssAccentFg } from './components/BrandLogo';
@@ -49,6 +50,7 @@ const ProfileView = React.lazy(() => import('./components/ProfileView'));
 const AdminPanelView = React.lazy(() => import('./components/AdminPanelView'));
 const MembersView = React.lazy(() => import('./components/MembersView'));
 const ContactView = React.lazy(() => import('./components/ContactView'));
+const CertificateVerificationModal = React.lazy(() => import('./components/CertificateVerificationModal'));
 
 
 const ViewLoadingFallback = () => (
@@ -98,6 +100,21 @@ export const OfflineIndicator: React.FC = () => {
 
 export default function App() {
   const isOnline = useOnlineStatus();
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // Route URL Segments & Query Params
+  const segments = useMemo(() => {
+    return location.pathname.split('/').filter(Boolean);
+  }, [location.pathname]);
+
+  const searchParams = useMemo(() => {
+    return new URLSearchParams(location.search);
+  }, [location.search]);
+
+  const isVerifyRoute = segments[0] === 'verify';
+  const verifyCertId = isVerifyRoute ? (segments[1] || searchParams.get('id') || '') : '';
+
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     return (localStorage.getItem('notx_theme') as 'light' | 'dark') || 'light';
   });
@@ -236,6 +253,115 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('notx_is_overseeing', String(isOverseeingTenant));
   }, [isOverseeingTenant]);
+
+  const navigateToTab = (tabId: string) => {
+    if (tabId === 'admin') {
+      const target = activeTenantId ? `/${activeTenantId}/admin` : '/admin';
+      navigate(target);
+      setShowAdminModal(true);
+      return;
+    }
+    if (tabId === 'members') {
+      const target = activeTenantId ? `/${activeTenantId}/members` : '/members';
+      navigate(target);
+      setShowMembersModal(true);
+      return;
+    }
+    if (tabId === 'contact') {
+      const target = activeTenantId ? `/${activeTenantId}/contact` : '/contact';
+      navigate(target);
+      setShowContactModal(true);
+      return;
+    }
+    if (tabId === 'superadmin') {
+      navigate('/superadmin');
+      return;
+    }
+
+    const target = activeTenantId ? (tabId === 'home' ? `/${activeTenantId}` : `/${activeTenantId}/${tabId}`) : (tabId === 'home' ? '/' : `/${tabId}`);
+    navigate(target);
+    setActiveTab(tabId);
+    setShowAdminModal(false);
+    setShowMembersModal(false);
+    setShowContactModal(false);
+  };
+
+  // Synchronize browser URL route with state and modals
+  useEffect(() => {
+    const tenantParam = searchParams.get('tenant') || searchParams.get('t');
+
+    if (segments.length === 0) {
+      if (tenantParam && tenantParam !== activeTenantId) {
+        setActiveTenantId(tenantParam);
+      }
+      setActiveTab('home');
+      setShowAdminModal(false);
+      setShowMembersModal(false);
+      setShowContactModal(false);
+      return;
+    }
+
+    if (segments[0] === 'verify') {
+      return;
+    }
+
+    if (segments[0] === 'superadmin') {
+      const isSuper = currentUser && (currentUser.isSuperAdmin || SUPER_ADMIN_EMAILS.includes(currentUser.email.toLowerCase()));
+      if (!isSuper && currentUser) {
+        navigate(activeTenantId ? `/${activeTenantId}` : '/');
+      }
+      return;
+    }
+
+    const tabNames = ['home', 'events', 'gallery', 'announcements', 'profile', 'admin', 'members', 'contact'];
+
+    let routeTenant = '';
+    let routeTab = 'home';
+
+    if (tabNames.includes(segments[0])) {
+      routeTab = segments[0];
+    } else {
+      routeTenant = segments[0];
+      if (segments[1] && tabNames.includes(segments[1])) {
+        routeTab = segments[1];
+      }
+    }
+
+    if (routeTenant && routeTenant !== activeTenantId) {
+      setActiveTenantId(routeTenant);
+      refreshAllData(routeTenant);
+    }
+
+    if (routeTab === 'admin') {
+      const canAccessAdmin = currentUser && (
+        currentUser.isSuperAdmin ||
+        currentUser.role === 'admin' ||
+        currentUser.role === 'associate' ||
+        currentUser.role === 'coordinator' ||
+        currentUser.role === 'president'
+      );
+      if (canAccessAdmin) {
+        setShowAdminModal(true);
+      } else if (currentUser) {
+        navigate(activeTenantId ? `/${activeTenantId}` : '/');
+      }
+      setShowMembersModal(false);
+      setShowContactModal(false);
+    } else if (routeTab === 'members') {
+      setShowMembersModal(true);
+      setShowAdminModal(false);
+      setShowContactModal(false);
+    } else if (routeTab === 'contact') {
+      setShowContactModal(true);
+      setShowAdminModal(false);
+      setShowMembersModal(false);
+    } else {
+      setActiveTab(routeTab);
+      setShowAdminModal(false);
+      setShowMembersModal(false);
+      setShowContactModal(false);
+    }
+  }, [location.pathname, location.search, currentUser]);
 
   // Keep active tenant data and branding synchronized in real-time across all devices
   useEffect(() => {
@@ -493,6 +619,7 @@ export default function App() {
   const handleLoginSuccess = (user: UserProfile) => {
     setCurrentUser(user);
     localStorage.setItem('notx_user', JSON.stringify(user));
+    const targetTenant = user.tenantId || activeTenantId;
     if (user.tenantId) {
       setActiveTenantId(user.tenantId);
       localStorage.setItem('notx_active_tenant', user.tenantId);
@@ -500,9 +627,13 @@ export default function App() {
     const isSuper = user.isSuperAdmin || SUPER_ADMIN_EMAILS.includes(user.email.toLowerCase());
     if (isSuper) {
       setIsOverseeingTenant(false);
+      navigate('/superadmin');
+    } else {
+      const target = targetTenant ? `/${targetTenant}` : '/';
+      navigate(target);
     }
     setActiveTab('home');
-    refreshAllData(user.tenantId || activeTenantId);
+    refreshAllData(targetTenant);
   };
 
   const handleLogout = async () => {
@@ -515,12 +646,13 @@ export default function App() {
     setIsOverseeingTenant(false);
     clearUserSession();
     localStorage.removeItem('notx_is_overseeing');
+    navigate('/');
     setActiveTab('home');
   };
 
   const selectEventFromDashboard = (event: DepartmentEvent) => {
     setSelectedEvent(event);
-    setActiveTab('events');
+    navigateToTab('events');
   };
 
   if (isBooting && !currentUser) {
@@ -615,7 +747,7 @@ export default function App() {
 
               {/* Brand wordmark */}
               <button
-                onClick={() => setActiveTab('home')}
+                onClick={() => navigateToTab('home')}
                 className="flex items-center gap-2.5 min-w-0 cursor-pointer"
                 title={`${currentBranding.appName || 'NOTX'} ${currentBranding.tagline || 'Connect'}`}
               >
@@ -658,7 +790,7 @@ export default function App() {
 
                 {/* Profile */}
                 <button
-                  onClick={() => setActiveTab('profile')}
+                  onClick={() => navigateToTab('profile')}
                   className="flex items-center gap-2 h-11 pl-2 pr-3 border-[1.5px] border-[var(--nb-ink)] rounded-md bg-[var(--nb-surface)] shadow-[2px_2px_0_var(--nb-ink)] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none transition-all cursor-pointer"
                 >
                   <div className="w-7 h-7 rounded overflow-hidden border-[1.5px] border-[var(--nb-ink)] bg-[var(--nb-surface-accent)] flex-shrink-0">
@@ -694,7 +826,7 @@ export default function App() {
                 events={events}
                 announcements={announcements}
                 registrations={registrations}
-                onNavigate={setActiveTab}
+                onNavigate={navigateToTab}
                 onSelectEvent={selectEventFromDashboard}
                 isLoading={isDataLoading}
                 activeTenantId={activeTenantId}
@@ -751,14 +883,14 @@ export default function App() {
                   allUsers={allUsers}
                   onLogout={handleLogout}
                   refreshUsers={refreshAllData}
-                  onOpenAdminPanel={() => setShowAdminModal(true)}
-                  setActiveTab={setActiveTab}
+                  onOpenAdminPanel={() => navigateToTab('admin')}
+                  setActiveTab={navigateToTab}
                   supportInfo={appConfig?.supportInfo}
                   branding={currentBranding}
                   isCertificatesEnabled={appConfig?.isCertificatesEnabled ?? true}
                   certificateTemplate={appConfig?.certificateTemplate}
-                  onOpenSupportBox={() => setShowContactModal(true)}
-                  onOpenMembers={() => setShowMembersModal(true)}
+                  onOpenSupportBox={() => navigateToTab('contact')}
+                  onOpenMembers={() => navigateToTab('members')}
                   onSupportInfoUpdated={(info) => setAppConfig(prev => prev ? ({ ...prev, supportInfo: info }) : null)}
                   activeTenantId={activeTenantId}
                   activeTenant={activeTenant}
@@ -773,7 +905,7 @@ export default function App() {
           <FloatingDockNav
             activeTab={activeTab}
             onTabChange={(tabId) => {
-              setActiveTab(tabId);
+              navigateToTab(tabId);
               setSelectedEvent(null);
             }}
             isOffline={!isOnline}
@@ -791,7 +923,10 @@ export default function App() {
                 <div className="p-4 border-b-[1.5px] border-[var(--nb-divider)] flex justify-between items-center flex-shrink-0">
                   <span className="nb-tag">Directory</span>
                   <button
-                    onClick={() => setShowMembersModal(false)}
+                    onClick={() => {
+                      setShowMembersModal(false);
+                      navigateToTab(activeTab);
+                    }}
                     className="nb-btn-icon"
                     aria-label="Close"
                   >
@@ -814,7 +949,10 @@ export default function App() {
                 <div className="p-4 border-b-[1.5px] border-[var(--nb-divider)] flex justify-between items-center flex-shrink-0">
                   <span className="nb-tag">Query Desk</span>
                   <button
-                    onClick={() => setShowContactModal(false)}
+                    onClick={() => {
+                      setShowContactModal(false);
+                      navigateToTab(activeTab);
+                    }}
                     className="nb-btn-icon"
                     aria-label="Close"
                   >
@@ -838,15 +976,42 @@ export default function App() {
               allUsers={allUsers}
               events={events}
               registrations={registrations}
-              onClose={() => setShowAdminModal(false)}
+              onClose={() => {
+                setShowAdminModal(false);
+                navigateToTab(activeTab);
+              }}
               refreshData={refreshAllData}
               activeTenantId={activeTenantId}
+              activeTenant={activeTenant}
+            />
+          )}
+
+          {/* Deep-Linked / Public Certificate Verification Modal */}
+          {isVerifyRoute && (
+            <CertificateVerificationModal
+              isOpen={true}
+              onClose={() => navigateToTab(activeTab)}
+              initialId={verifyCertId}
+              template={appConfig?.certificateTemplate}
               activeTenant={activeTenant}
             />
           )}
           </React.Suspense>
 
         </div>
+      )}
+
+      {/* Standalone Public Verification when unauthenticated */}
+      {!currentUser && isVerifyRoute && (
+        <React.Suspense fallback={<ViewLoadingFallback />}>
+          <CertificateVerificationModal
+            isOpen={true}
+            onClose={() => navigate('/')}
+            initialId={verifyCertId}
+            template={appConfig?.certificateTemplate}
+            activeTenant={activeTenant}
+          />
+        </React.Suspense>
       )}
     </>
   );
