@@ -383,23 +383,7 @@ npm run build   # Produces optimized production bundle in /dist
 
 ---
 
-## 🏆 CREATOR ROSTER
 
-<table width="100%">
-<tr>
-<td width="100%" align="center">
-<br/>
-<b>SYED SAMEER</b><br/>
-<code>23HM1A3354</code><br/>
-<b>Lead Full-Stack Architect</b><br/>
-<sub>Designed the architecture, real-time database schema, cryptographic verification engine & credentials desk.</sub><br/><br/>
-<a href="mailto:syedsame2244@gmail.com">📧 Email</a> • <a href="https://github.com/samxiao0">🐙 GitHub</a>
-<br/><br/>
-</td>
-</tr>
-</table>
-
----
 
 ## 📜 LICENSE
 
