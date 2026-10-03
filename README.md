@@ -60,10 +60,6 @@ The platform features a **Plum Velvet & Rose-Coral UI theme**, floating pill nav
 Create a `.env` file in the project root:
 
 ```env
-# Admin Default Credentials
-VITE_ADMIN_USERNAME=admin
-VITE_ADMIN_PASSWORD=your_secure_password
-
 # Cloudinary Setup for Image Uploads
 VITE_CLOUDINARY_CLOUD_NAME=your_cloud_name
 VITE_CLOUDINARY_UPLOAD_PRESET=your_unsigned_preset

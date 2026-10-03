@@ -38,7 +38,7 @@ import {
   subscribeToEventWinners,
   fetchUsers
 } from '../firebase';
-import { GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword } from 'firebase/auth';
+import { GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
 import { hashPassword, verifyPassword, recordUserActivity } from '../utils/auth';
 import { resolveTenantTheme, applyTenantTheme } from '../utils/themePresets';
 
@@ -172,94 +172,111 @@ export default function LoginView({
         return;
       }
 
-      const cleanRoll = rollNumberInput.trim();
+      const cleanRoll = rollNumberInput.trim().toUpperCase();
       const syntheticEmail = `${cleanRoll.toLowerCase()}.${selectedTenantId.toLowerCase()}@notx.com`;
 
-      // 1. Check environment variables for super admin override
-      const envAdminUser = import.meta.env.VITE_ADMIN_USERNAME;
-      const envAdminPass = import.meta.env.VITE_ADMIN_PASSWORD;
-
-      if (envAdminUser && cleanRoll.toLowerCase() === envAdminUser.toLowerCase() && password === envAdminPass) {
-        let masterAdmin = allUsers.find(u => u.email.toLowerCase() === envAdminUser.toLowerCase());
-        if (!masterAdmin) {
-          masterAdmin = {
-            uid: "admin_master",
-            name: "System Admin",
-            email: envAdminUser,
-            role: "admin",
-            isSuperAdmin: true,
-            phone: "",
-            profile_pic: "",
-            rollNumber: envAdminUser,
-            position: "System Administrator",
-            department: "Administration",
-            responsibilities: "Full system access",
-            password: envAdminPass,
-            created_at: new Date().toISOString()
-          };
-          await createUserProfile(masterAdmin);
-          refreshUsers();
-        }
-        onLoginSuccess(masterAdmin);
-        setLoading(false);
-        return;
-      }
-
-      // 2. Try Firebase Auth with synthetic email
       let authUserSuccess = false;
+      let authenticatedUid = '';
+
+      // 1. Authenticate with Firebase Auth directly
       try {
-        await signInWithEmailAndPassword(auth, syntheticEmail, password);
+        const userCred = await signInWithEmailAndPassword(auth, syntheticEmail, password);
         authUserSuccess = true;
+        authenticatedUid = userCred.user.uid;
       } catch (authErr: any) {
-        // Fall back to direct profile lookup
-      }
+        // If account does not exist in Firebase Auth yet (legacy seeded profile or unprovisioned account)
+        if (authErr?.code === 'auth/user-not-found' || authErr?.code === 'auth/invalid-credential') {
+          // Look up user in Firestore
+          const foundProfile = await findUserForLogin(cleanRoll, selectedTenantId);
+          if (foundProfile) {
+            // Check password against stored hash or default credentials
+            const isValidPassword = foundProfile.password 
+              ? (await verifyPassword(password, foundProfile.password)).isValid 
+              : (password === cleanRoll || password === 'notx@123');
 
-      // 3. Find user in memory or live Firestore
-      const effectiveUsers = showcaseUsers.length > 0 ? showcaseUsers : allUsers;
-      let foundUser = effectiveUsers.find(u =>
-        (u.rollNumber?.toLowerCase() === cleanRoll.toLowerCase() ||
-          u.email.toLowerCase() === cleanRoll.toLowerCase() ||
-          u.email.toLowerCase() === syntheticEmail) &&
-        (!u.tenantId || u.tenantId.toLowerCase() === selectedTenantId.toLowerCase() || u.isSuperAdmin)
-      );
+            if (isValidPassword) {
+              // Provision authentic Firebase Auth account
+              try {
+                const newCred = await createUserWithEmailAndPassword(auth, syntheticEmail, password);
+                authUserSuccess = true;
+                authenticatedUid = newCred.user.uid;
 
-      if (!foundUser) {
-        foundUser = await findUserForLogin(cleanRoll, selectedTenantId);
-      }
-
-      if (foundUser) {
-        // If user already has a password, verify using secure hash comparison
-        if (foundUser.password && !authUserSuccess) {
-          const { isValid, needsRehash } = await verifyPassword(password, foundUser.password);
-          if (!isValid) {
-            setError('Invalid password. Please check your credentials.');
+                // Migrate profile to new Firebase Auth UID and wipe legacy stored password from Firestore
+                await updateUserProfile(foundProfile.uid, {
+                  uid: newCred.user.uid,
+                  password: ''
+                });
+                foundProfile.uid = newCred.user.uid;
+                delete foundProfile.password;
+              } catch (createErr: any) {
+                if (createErr?.code === 'auth/email-already-in-use') {
+                  // Concurrent creation or exists; retry sign-in
+                  try {
+                    const retryCred = await signInWithEmailAndPassword(auth, syntheticEmail, password);
+                    authUserSuccess = true;
+                    authenticatedUid = retryCred.user.uid;
+                  } catch (retryErr) {
+                    console.warn('Retry sign in failed:', retryErr);
+                  }
+                }
+              }
+            } else {
+              setError('Invalid password. Please check your credentials.');
+              setLoading(false);
+              return;
+            }
+          } else {
+            setError(`No user found with Roll Number "${cleanRoll}" in ${selectedTenant?.name || 'this department'}.`);
             setLoading(false);
             return;
           }
-          // Automatically upgrade legacy plain text password to cryptographic SHA-256 hash
-          if (needsRehash) {
-            try {
-              const hashedPassword = await hashPassword(password);
-              await updateUserProfile(foundUser.uid, { password: hashedPassword });
-              foundUser.password = hashedPassword;
-            } catch (hashErr) {
-              console.warn('Silent rehash error:', hashErr);
-            }
+        } else if (authErr?.code === 'auth/wrong-password') {
+          setError('Invalid password. Please check your credentials.');
+          setLoading(false);
+          return;
+        } else {
+          console.warn('Authentication error:', authErr);
+        }
+      }
+
+      if (authUserSuccess) {
+        // Find user profile in memory or Firestore
+        let foundUser = allUsers.find(u =>
+          (u.rollNumber?.toUpperCase() === cleanRoll || (authenticatedUid && u.uid === authenticatedUid)) &&
+          (!u.tenantId || u.tenantId.toLowerCase() === selectedTenantId.toLowerCase() || u.isSuperAdmin)
+        );
+
+        if (!foundUser) {
+          foundUser = await findUserForLogin(cleanRoll, selectedTenantId);
+        }
+
+        if (foundUser) {
+          // Ensure password is not kept in user profile object
+          if (foundUser.password) {
+            delete foundUser.password;
           }
+          recordUserActivity();
+          onLoginSuccess(foundUser);
+        } else {
+          // Provision default student profile if missing
+          const defaultProfile: UserProfile = {
+            uid: authenticatedUid || auth.currentUser?.uid || `user_${cleanRoll.toLowerCase()}_${selectedTenantId}`,
+            name: `Student (${cleanRoll})`,
+            email: syntheticEmail,
+            role: 'student',
+            tenantId: selectedTenantId,
+            rollNumber: cleanRoll,
+            branch: selectedTenant?.branding?.appName || 'Engineering',
+            year: '3rd Year',
+            section: 'A',
+            created_at: new Date().toISOString()
+          };
+          await createUserProfile(defaultProfile);
+          recordUserActivity();
+          onLoginSuccess(defaultProfile);
         }
-
-        // If password was empty (first time login for seeded profiles)
-        if (!foundUser.password) {
-          const hashedPassword = await hashPassword(password);
-          await updateUserProfile(foundUser.uid, { password: hashedPassword });
-          foundUser.password = hashedPassword;
-          refreshUsers();
-        }
-
-        recordUserActivity();
-        onLoginSuccess(foundUser);
       } else {
-        setError(`No user found with Roll Number "${cleanRoll}" in ${selectedTenant?.name || 'this department'}.`);
+        setError('Authentication failed. Please verify your credentials.');
       }
     } catch (err: any) {
       console.error(err);

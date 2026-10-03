@@ -14,7 +14,7 @@ import {
   subscribeToCertificates,
   generateCertificateId
 } from '../firebase';
-import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
+import { GoogleAuthProvider, signInWithPopup, updatePassword } from 'firebase/auth';
 import { CRAFTWORK_SPECIAL_DATA_URL } from '../lib/craftworkAvatar';
 import { AvatarGalleryModal } from './AvatarGalleryModal';
 import EditSupportBoxModal from './EditSupportBoxModal';
@@ -196,7 +196,19 @@ export default function ProfileView({
           alert('New password must be at least 6 characters long.');
           return;
         }
-        updates.password = await hashPassword(newPassword.trim());
+        if (auth.currentUser) {
+          try {
+            await updatePassword(auth.currentUser, newPassword.trim());
+          } catch (passErr: any) {
+            if (passErr?.code === 'auth/requires-recent-login') {
+              alert('Security requirement: Please sign in again before changing your password.');
+              return;
+            }
+            console.error('Password update in Firebase Auth failed:', passErr);
+            alert('Failed to update password. Please check your credentials or try again.');
+            return;
+          }
+        }
       }
 
       await updateUserProfile(user.uid, updates);

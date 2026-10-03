@@ -16,7 +16,8 @@ import {
 } from 'lucide-react';
 
 import { onSnapshot, collection, doc, query, where } from 'firebase/firestore';
-import { db } from './firebase';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { db, auth, fetchUserById } from './firebase';
 import { UserProfile, DepartmentEvent, EventRegistration, Album, Announcement, AppConfig, SupportInfo, DEFAULT_SUPPORT_INFO, AppBranding, DEFAULT_BRANDING, Tenant, SUPER_ADMIN_EMAILS } from './types';
 import BrandLogo, { ACCENT_THEMES, getCssAccent, getCssAccentFg } from './components/BrandLogo';
 import { resolveTenantTheme, applyTenantTheme } from './utils/themePresets';
@@ -145,6 +146,34 @@ export default function App() {
     } else {
       clearUserSession();
     }
+  }, [currentUser]);
+
+  // Synchronize Firebase Auth state with React user profile session
+  useEffect(() => {
+    const unsubAuth = onAuthStateChanged(auth, async (fbUser) => {
+      if (fbUser) {
+        if (!currentUser) {
+          try {
+            const profile = await fetchUserById(fbUser.uid);
+            if (profile) {
+              if (profile.password) delete profile.password;
+              recordUserActivity();
+              setCurrentUser(profile);
+            }
+          } catch (e) {
+            console.warn('Silent auth rehydration note:', e);
+          }
+        }
+      } else {
+        // Firebase Auth is signed out
+        if (currentUser) {
+          setCurrentUser(null);
+          clearUserSession();
+        }
+      }
+    });
+
+    return () => unsubAuth();
   }, [currentUser]);
 
   // 24-Hour Session Inactivity Monitor & Auto-Logout
@@ -476,7 +505,12 @@ export default function App() {
     refreshAllData(user.tenantId || activeTenantId);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch (e) {
+      console.warn('Sign out note:', e);
+    }
     setCurrentUser(null);
     setIsOverseeingTenant(false);
     clearUserSession();

@@ -1008,7 +1008,6 @@ export default function AdminPanelView({
           year: '3rd Year',
           section: 'A',
           skills: '',
-          password: await hashPassword(pwd),
           profile_pic: "",
           isFirstLogin: true,
           created_at: new Date().toISOString()
