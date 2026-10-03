@@ -564,6 +564,36 @@ export interface DeletedBackup {
   restoredBy?: string;
 }
 
+export type SystemLogLevel = 'fatal' | 'error' | 'warn' | 'info';
+export type SystemLogCategory = 'react_crash' | 'network' | 'storage' | 'database' | 'security' | 'general';
+
+export interface SystemLogContext {
+  tenantId?: string;
+  userId?: string;
+  userEmail?: string;
+  userRole?: string;
+  url: string;
+  userAgent: string;
+  isOnline: boolean;
+  platform?: string;
+  appVersion?: string;
+  [key: string]: any;
+}
+
+export interface SystemLogEntry {
+  logId: string;
+  timestamp: string;
+  level: SystemLogLevel;
+  category: SystemLogCategory;
+  message: string;
+  errorName?: string;
+  stackTrace?: string;
+  componentStack?: string;
+  context: SystemLogContext;
+  hitCount?: number;
+  resolved?: boolean;
+}
+
 
 
 

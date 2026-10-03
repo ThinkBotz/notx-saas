@@ -55,7 +55,11 @@ import {
   MessageCircle,
   CornerDownRight,
   UserCheck,
-  Send
+  Send,
+  Flame,
+  Bug,
+  CheckCheck,
+  AlertOctagon
 } from 'lucide-react';
 import { 
   Tenant, 
@@ -69,8 +73,17 @@ import {
   DeletedBackup,
   SupportTicket,
   TicketCategory,
-  TicketStatus
+  TicketStatus,
+  SystemLogEntry,
+  SystemLogLevel,
+  SystemLogCategory
 } from '../types';
+import { 
+  logger,
+  subscribeToSystemLogs,
+  updateLogResolvedStatus,
+  purgeSystemLogs
+} from '../services/logger';
 import { 
   getAllTenants, 
   createTenant, 
@@ -137,7 +150,7 @@ export default function SuperAdminDashboard({
   const [statsLoading, setStatsLoading] = useState(false);
 
   // Navigation, Search & Filter controls
-  const [activeMainTab, setActiveMainTab] = useState<'tenants' | 'developers' | 'audit' | 'vault' | 'tickets'>('tenants');
+  const [activeMainTab, setActiveMainTab] = useState<'tenants' | 'developers' | 'audit' | 'vault' | 'tickets' | 'crashes'>('tenants');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
@@ -153,6 +166,18 @@ export default function SuperAdminDashboard({
   const [ticketReplyText, setTicketReplyText] = useState('');
   const [isSendingTicketReply, setIsSendingTicketReply] = useState(false);
   const [isUpdatingTicketStatus, setIsUpdatingTicketStatus] = useState(false);
+
+  // System Crash & Telemetry Engine state
+  const [systemLogs, setSystemLogs] = useState<SystemLogEntry[]>([]);
+  const [logsLoading, setLogsLoading] = useState(true);
+  const [logSearch, setLogSearch] = useState('');
+  const [logLevelFilter, setLogLevelFilter] = useState<'all' | SystemLogLevel>('all');
+  const [logCategoryFilter, setLogCategoryFilter] = useState<'all' | string>('all');
+  const [logStatusFilter, setLogStatusFilter] = useState<'all' | 'unresolved' | 'resolved'>('all');
+  const [logTenantFilter, setLogTenantFilter] = useState('all');
+  const [inspectingLog, setInspectingLog] = useState<SystemLogEntry | null>(null);
+  const [isPurgingLogs, setIsPurgingLogs] = useState(false);
+  const [copiedLogId, setCopiedLogId] = useState<string | null>(null);
 
   // Audit Trail state
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
@@ -273,9 +298,18 @@ export default function SuperAdminDashboard({
     return () => unsub();
   }, []);
 
-  // 5. Body Scroll Locking when any modal is open (Prevents double scroll)
+  // 6. Subscribe to real-time System Crash Logs
   useEffect(() => {
-    const hasModal = isAddModalOpen || !!editingTenant || !!deletingTenant || isValidationModalOpen || isManageDevsModalOpen || !!inspectingBackup;
+    const unsub = subscribeToSystemLogs((logs) => {
+      setSystemLogs(logs);
+      setLogsLoading(false);
+    }, 200);
+    return () => unsub();
+  }, []);
+
+  // 7. Body Scroll Locking when any modal is open (Prevents double scroll)
+  useEffect(() => {
+    const hasModal = isAddModalOpen || !!editingTenant || !!deletingTenant || isValidationModalOpen || isManageDevsModalOpen || !!inspectingBackup || !!inspectingLog;
     if (hasModal) {
       document.body.style.overflow = 'hidden';
     } else {
@@ -284,7 +318,7 @@ export default function SuperAdminDashboard({
     return () => {
       document.body.style.overflow = '';
     };
-  }, [isAddModalOpen, editingTenant, deletingTenant, isValidationModalOpen, isManageDevsModalOpen, inspectingBackup]);
+  }, [isAddModalOpen, editingTenant, deletingTenant, isValidationModalOpen, isManageDevsModalOpen, inspectingBackup, inspectingLog]);
 
 
   // 4. Parallelized Batch Telemetry Loading (High Performance)
@@ -921,6 +955,102 @@ export default function SuperAdminDashboard({
     }
   };
 
+  const unresolvedCrashesCount = useMemo(() => {
+    return systemLogs.filter(l => !l.resolved && (l.level === 'error' || l.category === 'react_crash')).length;
+  }, [systemLogs]);
+
+  const filteredSystemLogs = useMemo(() => {
+    return systemLogs.filter(l => {
+      const q = logSearch.trim().toLowerCase();
+      const matchesSearch = !q ||
+        l.message.toLowerCase().includes(q) ||
+        (l.errorName && l.errorName.toLowerCase().includes(q)) ||
+        l.logId.toLowerCase().includes(q) ||
+        (l.context?.userEmail && l.context.userEmail.toLowerCase().includes(q)) ||
+        (l.context?.url && l.context.url.toLowerCase().includes(q));
+
+      const matchesLevel = logLevelFilter === 'all' || l.level === logLevelFilter;
+      const matchesCategory = logCategoryFilter === 'all' || l.category === logCategoryFilter;
+      const matchesStatus = logStatusFilter === 'all' || (logStatusFilter === 'resolved' ? l.resolved : !l.resolved);
+      const matchesTenant = logTenantFilter === 'all' || l.context?.tenantId === logTenantFilter;
+
+      return matchesSearch && matchesLevel && matchesCategory && matchesStatus && matchesTenant;
+    });
+  }, [systemLogs, logSearch, logLevelFilter, logCategoryFilter, logStatusFilter, logTenantFilter]);
+
+  const handleToggleResolveLog = async (log: SystemLogEntry) => {
+    try {
+      await updateLogResolvedStatus(log.logId, !log.resolved);
+      if (inspectingLog?.logId === log.logId) {
+        setInspectingLog({ ...inspectingLog, resolved: !log.resolved });
+      }
+      setGlobalFeedback(`Log marked as ${!log.resolved ? 'RESOLVED' : 'UNRESOLVED'}`);
+      setTimeout(() => setGlobalFeedback(''), 3000);
+    } catch (err) {
+      console.error('Failed to update log status:', err);
+    }
+  };
+
+  const handlePurgeLogs = async (olderThanDays: number) => {
+    if (!window.confirm(`Purge system telemetry logs older than ${olderThanDays} days?`)) return;
+    setIsPurgingLogs(true);
+    try {
+      const count = await purgeSystemLogs(olderThanDays);
+      setGlobalFeedback(`Purged ${count} legacy system logs successfully.`);
+      setTimeout(() => setGlobalFeedback(''), 3500);
+    } catch (err) {
+      console.error('Failed to purge logs:', err);
+    } finally {
+      setIsPurgingLogs(false);
+    }
+  };
+
+  const handleTriggerTestTelemetry = async () => {
+    try {
+      await logger.captureMessage('Diagnostic ping from Super Admin Console', 'info', {
+        category: 'general',
+        context: {
+          userEmail: currentUser.email,
+          userRole: 'super_admin'
+        }
+      });
+      setGlobalFeedback('Diagnostic telemetry signal sent successfully!');
+      setTimeout(() => setGlobalFeedback(''), 3000);
+    } catch (err) {
+      console.error('Failed to trigger diagnostic telemetry:', err);
+    }
+  };
+
+  const handleCopyLogReport = (log: SystemLogEntry) => {
+    const report = [
+      `### 💥 System Incident Report: ${log.logId}`,
+      `- **Timestamp**: ${log.timestamp}`,
+      `- **Level**: ${log.level.toUpperCase()}`,
+      `- **Category**: ${log.category}`,
+      `- **Status**: ${log.resolved ? 'RESOLVED' : 'UNRESOLVED'}`,
+      `- **Hits / Occurrences**: ${log.hitCount}`,
+      `- **Tenant**: ${log.context?.tenantId || 'global'}`,
+      `- **User**: ${log.context?.userEmail || log.context?.userId || 'Anonymous'}`,
+      `- **URL**: ${log.context?.url || 'N/A'}`,
+      `- **User Agent**: ${log.context?.userAgent || 'N/A'}`,
+      `- **Error Name**: ${log.errorName || 'Error'}`,
+      `- **Message**: ${log.message}`,
+      '\n**Call Stack**:',
+      '```',
+      log.stackTrace || 'No call stack available',
+      '```',
+      '\n**React Component Stack**:',
+      '```',
+      log.componentStack || 'No component stack captured',
+      '```'
+    ].join('\n');
+
+    navigator.clipboard.writeText(report).then(() => {
+      setCopiedLogId(log.logId);
+      setTimeout(() => setCopiedLogId(null), 2500);
+    });
+  };
+
   return (
     <div 
       className={`fixed inset-0 h-full w-full ${isAddModalOpen || !!editingTenant || !!deletingTenant || isValidationModalOpen || isManageDevsModalOpen ? 'overflow-hidden' : 'overflow-y-auto'} bg-[var(--nb-bg)] text-[var(--nb-content)] flex flex-col font-sans selection:bg-amber-400 selection:text-neutral-900`}
@@ -1172,6 +1302,25 @@ export default function SuperAdminDashboard({
                 </span>
               )}
             </button>
+            <button
+              type="button"
+              onClick={() => setActiveMainTab('crashes')}
+              className={`px-3 py-1.5 rounded-md text-xs font-mono font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 shrink-0 relative ${
+                activeMainTab === 'crashes'
+                  ? 'bg-rose-600 text-white shadow-[1.5px_1.5px_0_var(--nb-ink)] font-black'
+                  : 'text-[var(--nb-secondary)] hover:text-rose-500'
+              }`}
+            >
+              <Flame className="w-3.5 h-3.5" />
+              <span>Crash Telemetry ({systemLogs.length})</span>
+              {unresolvedCrashesCount > 0 && (
+                <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-mono font-black ${
+                  activeMainTab === 'crashes' ? 'bg-neutral-900 text-rose-400' : 'bg-rose-500 text-white animate-pulse'
+                }`}>
+                  {unresolvedCrashesCount}
+                </span>
+              )}
+            </button>
           </div>
 
 
@@ -1380,6 +1529,105 @@ export default function SuperAdminDashboard({
                 <option value="association_reset">Association Term Reset</option>
                 <option value="tenant">Tenant Instance</option>
               </select>
+            </div>
+          )}
+
+          {/* System Telemetry & Crash Filter Cluster */}
+          {activeMainTab === 'crashes' && (
+            <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+              {/* Search input */}
+              <div className="relative flex-1 sm:w-60">
+                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--nb-secondary)] pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Search error, message, URL, user..."
+                  value={logSearch}
+                  onChange={(e) => setLogSearch(e.target.value)}
+                  className="w-full pl-8 pr-7 py-1.5 text-xs bg-[var(--nb-surface-accent)] rounded-md border border-[var(--nb-ink)] text-[var(--nb-content)] placeholder:text-[var(--nb-secondary)] outline-none focus:border-rose-500 font-medium"
+                />
+                {logSearch && (
+                  <button 
+                    onClick={() => setLogSearch('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--nb-secondary)] hover:text-[var(--nb-content)]"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+
+              {/* Tenant Filter */}
+              <select
+                value={logTenantFilter}
+                onChange={(e) => setLogTenantFilter(e.target.value)}
+                className="py-1.5 px-2.5 text-xs font-mono font-bold uppercase bg-[var(--nb-surface-accent)] rounded-md border border-[var(--nb-ink)] text-[var(--nb-content)] outline-none cursor-pointer"
+              >
+                <option value="all">All Scopes</option>
+                <option value="global">Global / Pre-Auth</option>
+                {tenants.map(t => (
+                  <option key={t.tenantId} value={t.tenantId}>{t.shortCode || t.name}</option>
+                ))}
+              </select>
+
+              {/* Severity / Level Filter */}
+              <select
+                value={logLevelFilter}
+                onChange={(e) => setLogLevelFilter(e.target.value as any)}
+                className="py-1.5 px-2.5 text-xs font-mono font-bold uppercase bg-[var(--nb-surface-accent)] rounded-md border border-[var(--nb-ink)] text-[var(--nb-content)] outline-none cursor-pointer"
+              >
+                <option value="all">All Levels</option>
+                <option value="error">🔴 Error / Crash</option>
+                <option value="warn">🟡 Warning</option>
+                <option value="info">🔵 Informational</option>
+              </select>
+
+              {/* Category Filter */}
+              <select
+                value={logCategoryFilter}
+                onChange={(e) => setLogCategoryFilter(e.target.value)}
+                className="py-1.5 px-2.5 text-xs font-mono font-bold uppercase bg-[var(--nb-surface-accent)] rounded-md border border-[var(--nb-ink)] text-[var(--nb-content)] outline-none cursor-pointer"
+              >
+                <option value="all">All Categories</option>
+                <option value="react_crash">React Boundary Crashes</option>
+                <option value="unhandled_window_error">Window Unhandled</option>
+                <option value="unhandled_promise_rejection">Promise Rejections</option>
+                <option value="database">Database / Firestore</option>
+                <option value="auth">Authentication</option>
+                <option value="general">General Telemetry</option>
+              </select>
+
+              {/* Resolution Status Filter */}
+              <select
+                value={logStatusFilter}
+                onChange={(e) => setLogStatusFilter(e.target.value as any)}
+                className="py-1.5 px-2.5 text-xs font-mono font-bold uppercase bg-[var(--nb-surface-accent)] rounded-md border border-[var(--nb-ink)] text-[var(--nb-content)] outline-none cursor-pointer"
+              >
+                <option value="all">All Statuses</option>
+                <option value="unresolved">⚠️ Unresolved Only</option>
+                <option value="resolved">✅ Resolved Only</option>
+              </select>
+
+              {/* Diagnostic Test Ping */}
+              <button
+                type="button"
+                onClick={handleTriggerTestTelemetry}
+                className="px-2.5 py-1.5 rounded-md border border-[var(--nb-ink)] bg-amber-400 hover:bg-amber-300 text-neutral-950 text-xs font-mono font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer shrink-0 shadow-[1.5px_1.5px_0_var(--nb-ink)]"
+                title="Send a real-time diagnostic test telemetry log"
+              >
+                <Activity className="w-3.5 h-3.5" />
+                <span className="hidden xl:inline">Test Ping</span>
+              </button>
+
+              {/* Purge Old Logs */}
+              <button
+                type="button"
+                onClick={() => handlePurgeLogs(14)}
+                disabled={isPurgingLogs}
+                className="px-2.5 py-1.5 rounded-md border border-[var(--nb-ink)] bg-[var(--nb-surface-accent)] hover:bg-rose-500 hover:text-white text-xs font-mono font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer shrink-0 disabled:opacity-50"
+                title="Purge logs older than 14 days"
+              >
+                <Trash2 className={`w-3.5 h-3.5 ${isPurgingLogs ? 'animate-spin' : ''}`} />
+                <span className="hidden xl:inline">Purge &gt;14d</span>
+              </button>
             </div>
           )}
         </div>
@@ -2982,7 +3230,356 @@ export default function SuperAdminDashboard({
             )}
           </div>
         )}
+
+        {/* ── 6. SYSTEM TELEMETRY & CRASH LOGS TAB ── */}
+        {activeMainTab === 'crashes' && (
+          <div className="space-y-4">
+            {/* Header & Quick Telemetry */}
+            <div 
+              className="p-5 rounded-xl bg-[var(--nb-surface)] border-2 border-[var(--nb-ink)] shadow-[4px_4px_0_var(--nb-ink)] flex flex-col md:flex-row items-start md:items-center justify-between gap-4"
+            >
+              <div>
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-[10px] font-mono font-bold uppercase bg-rose-500/15 text-rose-700 dark:text-rose-400 border border-rose-600/30 mb-2">
+                  <Flame className="w-3.5 h-3.5" />
+                  <span>CONTINUOUS TELEMETRY SHIELD</span>
+                </div>
+                <h3 className="nb-headline text-xl sm:text-2xl leading-none">System Diagnostics &amp; Crash Reports</h3>
+                <p className="text-xs text-[var(--nb-secondary)] mt-1.5 max-w-2xl font-sans leading-relaxed">
+                  Real-time telemetry capturing React component boundary crashes, unhandled window errors, promise rejections, and mobile crash logs across all tenant associations.
+                </p>
+              </div>
+
+              {/* KPI metrics cluster */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="px-3 py-2 rounded-lg bg-[var(--nb-surface-accent)] border border-[var(--nb-ink)] text-center min-w-[75px]">
+                  <div className="text-base font-black font-mono leading-none">{systemLogs.length}</div>
+                  <div className="text-[9px] font-mono text-[var(--nb-secondary)] uppercase mt-1">Total Logs</div>
+                </div>
+                <div className="px-3 py-2 rounded-lg bg-rose-500/15 border border-rose-500/40 text-center min-w-[75px]">
+                  <div className="text-base font-black font-mono text-rose-600 dark:text-rose-400 leading-none">{unresolvedCrashesCount}</div>
+                  <div className="text-[9px] font-mono text-rose-600 dark:text-rose-400 uppercase mt-1">Unresolved</div>
+                </div>
+                <div className="px-3 py-2 rounded-lg bg-emerald-500/15 border border-emerald-500/40 text-center min-w-[75px]">
+                  <div className="text-base font-black font-mono text-emerald-700 dark:text-emerald-400 leading-none">
+                    {systemLogs.filter(l => l.resolved).length}
+                  </div>
+                  <div className="text-[9px] font-mono text-emerald-700 dark:text-emerald-400 uppercase mt-1">Resolved</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Empty State */}
+            {filteredSystemLogs.length === 0 && (
+              <div className="p-16 text-center bg-[var(--nb-surface)] rounded-xl border-2 border-dashed border-[var(--nb-divider)] space-y-3">
+                <div className="w-12 h-12 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto">
+                  <CheckCheck className="w-6 h-6" />
+                </div>
+                <h4 className="font-display font-bold text-base text-[var(--nb-content)]">
+                  {systemLogs.length === 0 ? 'Zero Crashes Detected' : 'No Logs Match Filter Criteria'}
+                </h4>
+                <p className="text-xs text-[var(--nb-secondary)] max-w-sm mx-auto">
+                  {systemLogs.length === 0 
+                    ? 'The application runtime is completely stable. Any future errors or unhandled exceptions will appear here in real-time.'
+                    : 'Try clearing your search query or adjusting your level, category, and status filters.'}
+                </p>
+                {systemLogs.length > 0 && (
+                  <button
+                    onClick={() => {
+                      setLogSearch('');
+                      setLogLevelFilter('all');
+                      setLogCategoryFilter('all');
+                      setLogStatusFilter('all');
+                      setLogTenantFilter('all');
+                    }}
+                    className="nb-btn-ghost text-xs font-mono font-bold uppercase py-1.5 px-3"
+                  >
+                    Reset Filters
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Log Stream Cards */}
+            {filteredSystemLogs.length > 0 && (
+              <div className="space-y-3">
+                {filteredSystemLogs.map((log) => {
+                  const isError = log.level === 'error' || log.category === 'react_crash';
+                  const isWarn = log.level === 'warn';
+                  const levelBg = isError ? 'bg-rose-500/20 text-rose-600 dark:text-rose-400 border-rose-500/40' : isWarn ? 'bg-amber-500/20 text-amber-700 dark:text-amber-400 border-amber-500/40' : 'bg-blue-500/20 text-blue-700 dark:text-blue-400 border-blue-500/40';
+
+                  return (
+                    <div
+                      key={log.logId}
+                      className={`p-4 rounded-xl bg-[var(--nb-surface)] border-2 border-[var(--nb-ink)] shadow-[3px_3px_0_var(--nb-ink)] flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-all relative overflow-hidden ${
+                        log.resolved ? 'opacity-70 bg-opacity-50' : ''
+                      }`}
+                    >
+                      {/* Left Severity Indicator Strip */}
+                      <div className={`absolute top-0 bottom-0 left-0 w-1.5 ${isError ? 'bg-rose-500' : isWarn ? 'bg-amber-500' : 'bg-blue-500'}`} />
+
+                      {/* Main Log Info */}
+                      <div className="space-y-1.5 flex-1 min-w-0 pl-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`px-2 py-0.5 rounded text-[9.5px] font-mono font-black uppercase border ${levelBg}`}>
+                            {log.level}
+                          </span>
+                          <span className="px-2 py-0.5 rounded text-[9.5px] font-mono font-bold uppercase bg-[var(--nb-surface-accent)] border border-[var(--nb-ink)]/20 text-[var(--nb-secondary)]">
+                            {log.category.replace(/_/g, ' ')}
+                          </span>
+                          <span className="px-2 py-0.5 rounded text-[9.5px] font-mono font-bold uppercase bg-[var(--nb-surface-accent)] border border-[var(--nb-ink)]/20 text-[var(--nb-content)]">
+                            Scope: {log.context?.tenantId || 'global'}
+                          </span>
+                          {log.resolved ? (
+                            <span className="px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-500/40 flex items-center gap-1">
+                              <Check className="w-3 h-3" /> Resolved
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase bg-rose-500/20 text-rose-700 dark:text-rose-400 border border-rose-500/40 flex items-center gap-1">
+                              <AlertOctagon className="w-3 h-3" /> Active
+                            </span>
+                          )}
+                          {log.hitCount > 1 && (
+                            <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-black bg-amber-400 text-neutral-900 border border-neutral-900">
+                              ×{log.hitCount} occurrences
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="font-mono text-xs sm:text-sm font-bold text-[var(--nb-content)] break-words">
+                          <span className="text-rose-500 dark:text-rose-400">{log.errorName ? `${log.errorName}: ` : ''}</span>
+                          {log.message}
+                        </div>
+
+                        <div className="flex items-center gap-3 text-[10.5px] font-mono text-[var(--nb-secondary)] flex-wrap pt-0.5">
+                          <span className="flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            {new Date(log.timestamp).toLocaleString()}
+                          </span>
+                          {log.context?.userEmail && (
+                            <span className="flex items-center gap-1 truncate max-w-xs">
+                              <Users className="w-3 h-3" />
+                              {log.context.userEmail}
+                            </span>
+                          )}
+                          {log.context?.url && (
+                            <span className="flex items-center gap-1 truncate max-w-sm text-[10px] text-neutral-500">
+                              <Globe className="w-3 h-3" />
+                              {log.context.url}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Right Action Buttons */}
+                      <div className="flex items-center gap-2 shrink-0 self-end md:self-center">
+                        <button
+                          type="button"
+                          onClick={() => setInspectingLog(log)}
+                          className="nb-btn text-xs font-mono font-bold uppercase py-1.5 px-3 flex items-center gap-1.5 cursor-pointer bg-slate-900 text-white dark:bg-slate-100 dark:text-neutral-950"
+                          title="Inspect complete stack trace & system context"
+                        >
+                          <Terminal className="w-3.5 h-3.5" />
+                          <span>Inspect</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleToggleResolveLog(log)}
+                          className={`nb-btn-ghost text-xs font-mono font-bold uppercase py-1.5 px-2.5 flex items-center gap-1 cursor-pointer ${
+                            log.resolved 
+                              ? 'text-neutral-500 hover:text-neutral-700' 
+                              : 'text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10'
+                          }`}
+                          title={log.resolved ? "Mark as unresolved" : "Mark as resolved"}
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                          <span className="hidden sm:inline">{log.resolved ? 'Reopen' : 'Resolve'}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleCopyLogReport(log)}
+                          className="w-8 h-8 rounded flex items-center justify-center bg-[var(--nb-surface-accent)] hover:bg-[var(--nb-surface)] text-[var(--nb-content)] transition-colors cursor-pointer border border-[var(--nb-ink)]"
+                          title="Copy markdown diagnostic report"
+                        >
+                          {copiedLogId === log.logId ? (
+                            <Check className="w-3.5 h-3.5 text-emerald-500" />
+                          ) : (
+                            <Copy className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </main>
+
+      {/* ── 8. INSPECT SYSTEM CRASH MODAL ── */}
+      {inspectingLog && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-[var(--nb-surface)] rounded-xl max-w-3xl w-full flex flex-col max-h-[92vh] overflow-hidden border-[3px] border-[var(--nb-ink)] shadow-[6px_6px_0_var(--nb-ink)] animate-in zoom-in-95 duration-150">
+            {/* Header */}
+            <div className="p-4 bg-slate-950 text-white border-b-2 border-[var(--nb-ink)] flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="p-2 rounded bg-rose-500/20 text-rose-400 border border-rose-500/40">
+                  <Terminal className="w-5 h-5" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="font-display font-black text-base sm:text-lg leading-tight truncate">
+                    INCIDENT INSPECTION: {inspectingLog.logId}
+                  </h3>
+                  <div className="flex items-center gap-2 text-[10px] font-mono text-slate-400 mt-0.5">
+                    <span>{inspectingLog.timestamp}</span>
+                    <span>&bull;</span>
+                    <span className="uppercase text-rose-400 font-bold">{inspectingLog.level}</span>
+                    <span>&bull;</span>
+                    <span className="uppercase">{inspectingLog.category}</span>
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setInspectingLog(null)}
+                className="w-8 h-8 rounded-md bg-slate-800 text-slate-300 hover:bg-slate-700 flex items-center justify-center border border-slate-600 cursor-pointer transition-all shrink-0"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Content Body */}
+            <div className="p-5 overflow-y-auto space-y-4 flex-1 font-sans">
+              {/* Context Summary Cards */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                <div className="p-2.5 rounded-lg bg-[var(--nb-surface-accent)] border border-[var(--nb-ink)]">
+                  <div className="text-[9px] font-mono font-bold uppercase text-[var(--nb-secondary)]">Scope Tenant</div>
+                  <div className="text-xs font-mono font-bold text-[var(--nb-content)] mt-0.5 truncate">
+                    {inspectingLog.context?.tenantId || 'global'}
+                  </div>
+                </div>
+                <div className="p-2.5 rounded-lg bg-[var(--nb-surface-accent)] border border-[var(--nb-ink)]">
+                  <div className="text-[9px] font-mono font-bold uppercase text-[var(--nb-secondary)]">User / UID</div>
+                  <div className="text-xs font-mono font-bold text-[var(--nb-content)] mt-0.5 truncate" title={inspectingLog.context?.userEmail || inspectingLog.context?.userId}>
+                    {inspectingLog.context?.userEmail || inspectingLog.context?.userId || 'Anonymous'}
+                  </div>
+                </div>
+                <div className="p-2.5 rounded-lg bg-[var(--nb-surface-accent)] border border-[var(--nb-ink)]">
+                  <div className="text-[9px] font-mono font-bold uppercase text-[var(--nb-secondary)]">Hit Count</div>
+                  <div className="text-xs font-mono font-black text-rose-600 dark:text-rose-400 mt-0.5">
+                    {inspectingLog.hitCount} occurrences
+                  </div>
+                </div>
+                <div className="p-2.5 rounded-lg bg-[var(--nb-surface-accent)] border border-[var(--nb-ink)]">
+                  <div className="text-[9px] font-mono font-bold uppercase text-[var(--nb-secondary)]">Resolution</div>
+                  <div className="text-xs font-mono font-bold mt-0.5">
+                    {inspectingLog.resolved ? (
+                      <span className="text-emerald-600 dark:text-emerald-400 font-black">RESOLVED</span>
+                    ) : (
+                      <span className="text-rose-600 dark:text-rose-400 font-black">UNRESOLVED</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Message Box */}
+              <div className="p-3.5 rounded-lg bg-rose-500/10 border-2 border-rose-500/30">
+                <div className="text-[10px] font-mono font-bold text-rose-500 uppercase mb-1">
+                  {inspectingLog.errorName || 'Exception Message'}
+                </div>
+                <div className="text-xs sm:text-sm font-mono font-bold text-[var(--nb-content)] break-words">
+                  {inspectingLog.message}
+                </div>
+              </div>
+
+              {/* Client Environment Strip */}
+              <div className="p-3 rounded-lg bg-[var(--nb-surface-accent)] border border-[var(--nb-ink)] text-xs font-mono space-y-1">
+                <div className="flex items-center justify-between text-[10px] text-[var(--nb-secondary)] border-b border-[var(--nb-ink)]/15 pb-1">
+                  <span>RUNTIME ENVIRONMENT TELEMETRY</span>
+                  <span>v{inspectingLog.context?.appVersion || '1.3.0'}</span>
+                </div>
+                <div className="text-[11px] truncate text-[var(--nb-content)] pt-0.5">
+                  <strong>URL:</strong> {inspectingLog.context?.url || 'N/A'}
+                </div>
+                <div className="text-[11px] break-words text-[var(--nb-secondary)]">
+                  <strong>User Agent:</strong> {inspectingLog.context?.userAgent || 'N/A'}
+                </div>
+              </div>
+
+              {/* Stack Trace */}
+              {inspectingLog.stackTrace && (
+                <div className="space-y-1.5">
+                  <div className="text-[10px] font-mono font-bold text-[var(--nb-secondary)] uppercase flex items-center justify-between">
+                    <span>Call Stack Trace</span>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(inspectingLog.stackTrace || '');
+                        setCopiedLogId(inspectingLog.logId);
+                        setTimeout(() => setCopiedLogId(null), 2000);
+                      }}
+                      className="text-[10px] font-mono text-indigo-500 hover:underline flex items-center gap-1 cursor-pointer"
+                    >
+                      <Copy className="w-3 h-3" />
+                      <span>{copiedLogId === inspectingLog.logId ? 'Copied' : 'Copy Trace'}</span>
+                    </button>
+                  </div>
+                  <pre className="p-3 bg-slate-950 text-slate-300 font-mono text-[11px] rounded-lg border border-slate-800 overflow-x-auto max-h-56 whitespace-pre-wrap leading-relaxed">
+                    {inspectingLog.stackTrace}
+                  </pre>
+                </div>
+              )}
+
+              {/* Component Stack */}
+              {inspectingLog.componentStack && (
+                <div className="space-y-1.5">
+                  <div className="text-[10px] font-mono font-bold text-[var(--nb-secondary)] uppercase">
+                    React Component Hierarchy
+                  </div>
+                  <pre className="p-3 bg-slate-950 text-slate-400 font-mono text-[11px] rounded-lg border border-slate-800 overflow-x-auto max-h-48 whitespace-pre-wrap leading-relaxed">
+                    {inspectingLog.componentStack}
+                  </pre>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="p-3.5 bg-[var(--nb-surface-accent)] border-t-2 border-[var(--nb-ink)] flex items-center justify-between gap-3 shrink-0">
+              <button
+                type="button"
+                onClick={() => handleCopyLogReport(inspectingLog)}
+                className="nb-btn-ghost text-xs font-mono font-bold uppercase py-2 px-3 flex items-center gap-1.5 cursor-pointer"
+              >
+                {copiedLogId === inspectingLog.logId ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
+                <span>{copiedLogId === inspectingLog.logId ? 'Copied Report' : 'Copy Full Diagnostics'}</span>
+              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleToggleResolveLog(inspectingLog)}
+                  className={`nb-btn text-xs font-mono font-bold uppercase py-2 px-3.5 flex items-center gap-1.5 cursor-pointer ${
+                    inspectingLog.resolved
+                      ? 'bg-amber-500 hover:bg-amber-600 text-neutral-950'
+                      : 'bg-emerald-500 hover:bg-emerald-600 text-white'
+                  }`}
+                >
+                  <Check className="w-4 h-4" />
+                  <span>{inspectingLog.resolved ? 'Mark Unresolved' : 'Mark Resolved'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInspectingLog(null)}
+                  className="nb-btn-ghost text-xs font-mono font-bold uppercase py-2 px-3 cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── 7. EDIT TENANT MODAL (Fixed Shell + Sticky Footer) ── */}
       {editingTenant && (

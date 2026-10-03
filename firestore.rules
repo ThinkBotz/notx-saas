@@ -222,5 +222,14 @@ service cloud.firestore {
         resource.data.tenantId != null && isTenantAdmin(resource.data.tenantId)
       );
     }
+
+    // --- 14. System Crash Logs & Diagnostics ---
+    // Read & Delete: Super Admin only
+    // Create: Anyone (including unauthenticated or pre-login clients capturing crashes)
+    // Update: Super Admin only (for marking resolved)
+    match /system_logs/{logId} {
+      allow read, delete, update: if isSuperAdmin();
+      allow create: if true;
+    }
   }
 }
