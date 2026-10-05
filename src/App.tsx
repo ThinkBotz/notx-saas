@@ -52,6 +52,7 @@ const GalleryPage = React.lazy(() => import('./pages/GalleryPage'));
 const AnnouncementsPage = React.lazy(() => import('./pages/AnnouncementsPage'));
 const ProfilePage = React.lazy(() => import('./pages/ProfilePage'));
 const MembersPage = React.lazy(() => import('./pages/MembersPage'));
+const AssociatesPage = React.lazy(() => import('./pages/AssociatesPage'));
 const ContactPage = React.lazy(() => import('./pages/ContactPage'));
 const AdminPage = React.lazy(() => import('./pages/AdminPage'));
 
@@ -240,7 +241,7 @@ export default function App() {
 
   // Detect tenant prefix from route if present e.g. /:tenantId/*
   useEffect(() => {
-    const reservedRoutes = ['login', 'superadmin', 'verify', 'setup', 'events', 'gallery', 'announcements', 'profile', 'members', 'contact', 'admin', 'home'];
+    const reservedRoutes = ['login', 'superadmin', 'verify', 'setup', 'events', 'gallery', 'announcements', 'profile', 'members', 'associates', 'associate', 'contact', 'admin', 'home'];
     if (segments.length > 0 && !reservedRoutes.includes(segments[0])) {
       const urlTenant = segments[0];
       if (urlTenant !== activeTenantId) {
@@ -660,6 +661,17 @@ export default function App() {
             )
           } />
 
+          {/* Public ID Badges / Associates Showcase (Zero Auth Required) */}
+          <Route 
+            path="/associates" 
+            element={
+              <React.Suspense fallback={<ViewLoadingFallback />}>
+                <AssociatesPage />
+              </React.Suspense>
+            } 
+          />
+          <Route path="/associate" element={<Navigate to="/associates" replace />} />
+
           {/* Tenant-scoped routes */}
           <Route 
             path="/:tenantId" 
@@ -679,6 +691,8 @@ export default function App() {
             <Route path="announcements" element={<AnnouncementsPage />} />
             <Route path="profile" element={<ProfilePage />} />
             <Route path="members" element={<MembersPage />} />
+            <Route path="associates" element={<AssociatesPage />} />
+            <Route path="associate" element={<Navigate to="associates" replace />} />
             <Route path="contact" element={<ContactPage />} />
             <Route path="admin" element={<AdminPage />} />
           </Route>
@@ -702,6 +716,8 @@ export default function App() {
             <Route path="announcements" element={<AnnouncementsPage />} />
             <Route path="profile" element={<ProfilePage />} />
             <Route path="members" element={<MembersPage />} />
+            <Route path="associates" element={<AssociatesPage />} />
+            <Route path="associate" element={<Navigate to="associates" replace />} />
             <Route path="contact" element={<ContactPage />} />
             <Route path="admin" element={<AdminPage />} />
           </Route>

@@ -37,7 +37,7 @@
 ```text
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │  APP:       NotX Connect                                                     │
-│  LIVE:      https://notx-saas.vercel.app/                                    │
+│  LIVE:      https://auraml.in                                                │
 │  MOTTO:     "Because paper attendance sheets belong in a museum."            │
 │  STYLE:     Neo-Brutalist Industrial (Hard shadows, chunky ink, zero fluff)  │
 └──────────────────────────────────────────────────────────────────────────────┘

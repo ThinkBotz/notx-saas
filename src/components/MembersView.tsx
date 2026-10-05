@@ -309,13 +309,22 @@ export default function MembersView({
       
       {/* Title */}
       <div 
-        className="p-4 rounded-lg bg-[var(--nb-surface)]"
+        className="p-4 rounded-lg bg-[var(--nb-surface)] flex flex-col sm:flex-row sm:items-center justify-between gap-3"
         style={{ border: '2px solid var(--nb-ink)', boxShadow: 'var(--shadow-hard-sm)' }}
       >
-        <h3 className="nb-headline text-xl leading-none">Association Directory</h3>
-        <p className="nb-label text-xs mt-1 text-[var(--nb-secondary)]">
-          Meet the thinkers and creators powering {branding.appName || activeTenant?.name || 'NOTX'} {branding.tagline || 'Connect'}
-        </p>
+        <div>
+          <h3 className="nb-headline text-xl leading-none">Association Directory</h3>
+          <p className="nb-label text-xs mt-1 text-[var(--nb-secondary)]">
+            Meet the thinkers and creators powering {branding.appName || activeTenant?.name || 'NOTX'} {branding.tagline || 'Connect'}
+          </p>
+        </div>
+        <a
+          href="/associates"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-amber-400 hover:bg-amber-500 text-neutral-950 font-mono text-xs font-black border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)] active:translate-x-0.5 active:translate-y-0.5 transition-all self-start sm:self-auto cursor-pointer"
+        >
+          <span>LANYARD ID BADGES</span>
+          <span>&rarr;</span>
+        </a>
       </div>
 
       {/* 0. Platform Builders & Engineering Team (Globally Managed by Super Admin) */}

@@ -313,6 +313,17 @@ input, textarea, select {
   background: var(--nb-secondary);
 }
 
+/* Hide scrollbar while keeping scroll functionality */
+.no-scrollbar,
+.scrollbar-none {
+  -ms-overflow-style: none !important; /* IE and Edge */
+  scrollbar-width: none !important; /* Firefox */
+}
+.no-scrollbar::-webkit-scrollbar,
+.scrollbar-none::-webkit-scrollbar {
+  display: none !important; /* Chrome, Safari, Opera */
+}
+
 /* ─────────────────────────────────────────────────────────────
    7. TYPOGRAPHY UTILITIES
    ───────────────────────────────────────────────────────────── */
