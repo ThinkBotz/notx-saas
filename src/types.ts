@@ -124,6 +124,19 @@ export interface Announcement {
   author: string;
 }
 
+export interface AppNotification {
+  id: string;
+  tenantId: string;
+  userId: string; // Specific user ID or 'all' for tenant-wide broadcast
+  title: string;
+  message: string;
+  type: 'attendance' | 'promotion' | 'assignment' | 'event' | 'announcement' | 'gallery' | 'registration' | 'system';
+  link?: string;
+  read?: boolean;
+  createdAt: string;
+  metadata?: Record<string, any>;
+}
+
 
 export interface SupportInfo {
   title: string;

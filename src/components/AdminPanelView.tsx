@@ -90,7 +90,8 @@ import {
   subscribeToTenantTickets,
   addTicketReply,
   updateTicketStatus,
-  markTicketRead
+  markTicketRead,
+  sendAppNotification
 } from '../firebase';
 import QRCameraScanner from "./QRCameraScanner";
 import EditSupportBoxModal from './EditSupportBoxModal';
@@ -761,6 +762,19 @@ export default function AdminPanelView({
 
     try {
       await updateUserProfile(coordId, { assignedEvents: updatedAssignments });
+      const assignedNames = events
+        .filter(ev => updatedAssignments.includes(ev.eventId))
+        .map(ev => ev.title);
+      const eventSummary = assignedNames.length > 0 ? assignedNames.join(', ') : 'None';
+      sendAppNotification({
+        tenantId: coord.tenantId || activeTenantIdResolved || '',
+        userId: coord.uid,
+        type: 'assignment',
+        title: '📅 Event Assignments Updated',
+        message: `Your coordinator responsibilities have been updated. Active events: ${eventSummary}.`,
+        link: '/admin',
+        metadata: { assignedEvents: updatedAssignments }
+      }).catch(console.warn);
       refreshData();
     } catch (err) {
       console.error("Failed to update coordinator assignments: ", err);
@@ -873,6 +887,16 @@ export default function AdminPanelView({
     }
     try {
       await updateUserProfile(uid, { role: "student", powers: {}, assignedEvents: [], position: "", responsibilities: "" });
+      if (targetUser) {
+        sendAppNotification({
+          tenantId: targetUser.tenantId || activeTenantIdResolved || '',
+          userId: uid,
+          type: 'system',
+          title: 'ℹ️ Role Updated',
+          message: 'Your leadership privileges have been revoked and restored to Student profile.',
+          link: '/profile'
+        }).catch(console.warn);
+      }
       setConfirmDemoteId(null);
       setFeedbackMsg("User demoted successfully.");
       refreshData();
@@ -908,6 +932,15 @@ export default function AdminPanelView({
         powers: assocPowers,
         responsibilities: `Coordinating activities as ${effectivePosition}.`
       });
+      sendAppNotification({
+        tenantId: student.tenantId || activeTenantIdResolved || '',
+        userId: student.uid,
+        type: 'promotion',
+        title: '🎖️ Role Promoted: Associate!',
+        message: `Congratulations ${student.name}! You have been appointed as ${effectivePosition}.`,
+        link: '/associates',
+        metadata: { position: effectivePosition, newRole: 'associate' }
+      }).catch(console.warn);
       setShowCreateAssociate(false);
       setAssocSearchRoll('');
       setAssocTitleSelect('President');
@@ -936,6 +969,19 @@ export default function AdminPanelView({
         assignedEvents: coordAssignedEvents,
         responsibilities: `Managing assigned technical and cultural events.`
       });
+      const assignedNames = events
+        .filter(ev => coordAssignedEvents.includes(ev.eventId))
+        .map(ev => ev.title);
+      const eventSummary = assignedNames.length > 0 ? ` for: ${assignedNames.join(', ')}` : '';
+      sendAppNotification({
+        tenantId: student.tenantId || activeTenantIdResolved || '',
+        userId: student.uid,
+        type: 'promotion',
+        title: '🎯 Appointed Event Coordinator!',
+        message: `Congratulations ${student.name}! You have been appointed as Student Event Coordinator${eventSummary}. Check your coordinator dashboard.`,
+        link: '/admin',
+        metadata: { assignedEvents: coordAssignedEvents, newRole: 'coordinator' }
+      }).catch(console.warn);
       setShowCreateCoordinator(false);
       setCoordSearchRoll('');
       setCoordAssignedEvents([]);

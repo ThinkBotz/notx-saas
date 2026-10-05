@@ -45,7 +45,8 @@ import {
   SupportTicket,
   TicketReply,
   TicketCategory,
-  TicketStatus
+  TicketStatus,
+  AppNotification
 } from './types';
 
 
@@ -1448,6 +1449,14 @@ export async function createEvent(event: DepartmentEvent): Promise<void> {
       details: `Created new event "${finalEvent.title}" (${finalEvent.category}) on ${finalEvent.date}.`,
       severity: 'info'
     });
+
+    broadcastAppNotification({
+      tenantId: finalEvent.tenantId,
+      title: '⚡ New Event Announced!',
+      message: `"${finalEvent.title}" (${finalEvent.category}) is now open for registration! Check guidelines and claim your pass.`,
+      type: 'event',
+      link: `/events/${finalEvent.eventId}`
+    }).catch(e => console.warn('Event broadcast notification note:', e));
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, path);
   }
@@ -1578,6 +1587,15 @@ export async function createRegistration(reg: EventRegistration): Promise<void> 
       details: `Registered for event "${finalReg.eventId}" ${finalReg.isTeam ? `as team "${finalReg.teamName}"` : 'individually'}.`,
       severity: 'info'
     });
+
+    sendAppNotification({
+      tenantId: finalReg.tenantId,
+      userId: finalReg.studentId,
+      title: '🎟️ Registration Pass Confirmed!',
+      message: `Your entry pass for event has been confirmed. Open your passes to view your QR code.`,
+      type: 'registration',
+      link: `/events/${finalReg.eventId}`
+    }).catch(e => console.warn('Registration notification note:', e));
   } catch (error: any) {
     if (!error?.message?.includes('Cross-Tenant Registration Denied') && !error?.message?.includes('full')) {
       handleFirestoreError(error, OperationType.CREATE, path);
@@ -1637,6 +1655,21 @@ export async function updateRegistrationStatus(
       if (verifiedBy) {
         updateData.verifiedBy = verifiedBy;
       }
+
+      // Notify student immediately of verified attendance
+      getDoc(docRef).then(snap => {
+        if (snap.exists()) {
+          const reg = snap.data() as EventRegistration;
+          sendAppNotification({
+            tenantId: reg.tenantId || 'cse-aiml',
+            userId: reg.studentId,
+            title: '✅ Attendance Marked & Confirmed!',
+            message: `Your entry pass has been scanned and verified${verifiedBy ? ` by ${verifiedBy}` : ''}. You are officially marked PRESENT!`,
+            type: 'attendance',
+            link: `/events/${reg.eventId}`
+          });
+        }
+      }).catch(e => console.warn('Attendance notification dispatch note:', e));
     }
     await updateDoc(docRef, updateData);
 
@@ -1729,6 +1762,14 @@ export async function addAlbum(item: Album): Promise<void> {
       details: `Created gallery album "${finalAlbum.title}" (${finalAlbum.images?.length || 0} photos).`,
       severity: 'info'
     });
+
+    broadcastAppNotification({
+      tenantId: finalAlbum.tenantId,
+      title: '📸 New Photo Gallery Published!',
+      message: `Event memories & photos added for "${finalAlbum.title}". Open gallery to explore!`,
+      type: 'gallery',
+      link: '/gallery'
+    }).catch(e => console.warn('Gallery notification note:', e));
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, path);
   }
@@ -1796,6 +1837,14 @@ export async function createAnnouncement(announce: Announcement): Promise<void> 
       details: `Published announcement "${finalAnnounce.title}" by ${finalAnnounce.author}.`,
       severity: 'info'
     });
+
+    broadcastAppNotification({
+      tenantId: finalAnnounce.tenantId,
+      title: `📢 Announcement: ${finalAnnounce.title}`,
+      message: finalAnnounce.content.substring(0, 100) + (finalAnnounce.content.length > 100 ? '...' : ''),
+      type: 'announcement',
+      link: '/announcements'
+    }).catch(e => console.warn('Announcement notification note:', e));
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, path);
   }
@@ -3128,4 +3177,153 @@ export async function deleteSupportTicket(ticketId: string): Promise<void> {
   const ticketRef = doc(db, 'support_tickets', ticketId);
   await deleteDoc(ticketRef);
 }
+
+// ─────────────────────────────────────────────────────────────
+// NOTIFICATIONS SYSTEM (Web Push & In-App Alerts)
+// ─────────────────────────────────────────────────────────────
+
+export async function requestNotificationPermission(): Promise<NotificationPermission> {
+  if (typeof window === 'undefined' || !('Notification' in window)) return 'denied';
+  try {
+    const permission = await Notification.requestPermission();
+    if (permission === 'granted') {
+      sendBrowserNotification(
+        '🔔 NOTX Live Alerts Enabled!',
+        'You will now receive instant push alerts for attendance check-ins, event updates, and promotions.'
+      );
+    }
+    return permission;
+  } catch (err) {
+    console.warn('Failed to request notification permission:', err);
+    return 'denied';
+  }
+}
+
+export async function sendBrowserNotification(title: string, body: string, url?: string) {
+  if (typeof window === 'undefined' || !('Notification' in window)) return;
+  if (Notification.permission === 'granted') {
+    try {
+      if ('serviceWorker' in navigator) {
+        const reg = await navigator.serviceWorker.ready;
+        if (reg && reg.showNotification) {
+          reg.showNotification(title, {
+            body,
+            icon: '/pwa-192x192.png',
+            badge: '/favicon.ico',
+            data: { url: url || '/' }
+          });
+          return;
+        }
+      }
+      new Notification(title, {
+        body,
+        icon: '/pwa-192x192.png',
+        badge: '/favicon.ico'
+      });
+    } catch (e) {
+      console.warn('Browser notification note:', e);
+    }
+  }
+}
+
+export async function sendAppNotification(params: {
+  tenantId: string;
+  userId: string;
+  title: string;
+  message: string;
+  type: AppNotification['type'];
+  link?: string;
+  metadata?: Record<string, any>;
+}): Promise<string> {
+  const notifId = `notif_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+  const cleanTid = params.tenantId ? params.tenantId.trim().toLowerCase() : 'cse-aiml';
+  const notification: AppNotification = {
+    id: notifId,
+    tenantId: cleanTid,
+    userId: params.userId,
+    title: params.title,
+    message: params.message,
+    type: params.type,
+    link: params.link,
+    read: false,
+    createdAt: new Date().toISOString(),
+    metadata: params.metadata
+  };
+
+  try {
+    const docRef = doc(db, 'notifications', notifId);
+    await setDoc(docRef, cleanUndefined(notification));
+    
+    // Trigger native browser notification if allowed
+    sendBrowserNotification(params.title, params.message, params.link);
+  } catch (error) {
+    console.error('Failed to dispatch app notification:', error);
+  }
+
+  return notifId;
+}
+
+export async function broadcastAppNotification(params: {
+  tenantId: string;
+  title: string;
+  message: string;
+  type: AppNotification['type'];
+  link?: string;
+  metadata?: Record<string, any>;
+}): Promise<string> {
+  return sendAppNotification({
+    ...params,
+    userId: 'all'
+  });
+}
+
+export function subscribeToUserNotifications(
+  userId: string,
+  tenantId: string,
+  callback: (notifications: AppNotification[]) => void
+): () => void {
+  const cleanTid = tenantId ? tenantId.trim().toLowerCase() : '';
+  const notifsCol = collection(db, 'notifications');
+  
+  const q = cleanTid
+    ? query(notifsCol, where('tenantId', '==', cleanTid))
+    : notifsCol;
+
+  return onSnapshot(q, (snapshot) => {
+    const allNotifs: AppNotification[] = [];
+    snapshot.forEach(docSnap => {
+      const n = docSnap.data() as AppNotification;
+      if (n.userId === userId || n.userId === 'all') {
+        allNotifs.push(n);
+      }
+    });
+    allNotifs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    callback(allNotifs.slice(0, 50));
+  }, (err) => {
+    console.warn('Notifications realtime listener note:', err);
+  });
+}
+
+export async function markNotificationAsRead(notificationId: string): Promise<void> {
+  try {
+    const docRef = doc(db, 'notifications', notificationId);
+    await updateDoc(docRef, { read: true });
+  } catch (err) {
+    console.error('Failed to mark notification read:', err);
+  }
+}
+
+export async function markAllNotificationsAsRead(notificationIds: string[]): Promise<void> {
+  try {
+    const batch = writeBatch(db);
+    notificationIds.forEach(id => {
+      const docRef = doc(db, 'notifications', id);
+      batch.update(docRef, { read: true });
+    });
+    await batch.commit();
+  } catch (err) {
+    console.error('Failed to mark all notifications read:', err);
+  }
+}
+
 

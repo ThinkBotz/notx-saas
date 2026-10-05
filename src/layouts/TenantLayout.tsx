@@ -1,11 +1,13 @@
-import React, { useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { RefreshCw, Loader2 } from 'lucide-react';
+import { RefreshCw, Loader2, Bell } from 'lucide-react';
 import { useTenantContext } from '../context/TenantContext';
 import BrandLogo from '../components/BrandLogo';
 import { PWAInstallButton } from '../components/PWAInstallButton';
 import FloatingDockNav from '../components/FloatingDockNav';
-import { SUPER_ADMIN_EMAILS } from '../types';
+import { NotificationInboxDrawer } from '../components/NotificationInboxDrawer';
+import { subscribeToUserNotifications } from '../firebase';
+import { SUPER_ADMIN_EMAILS, AppNotification } from '../types';
 
 export const ViewLoadingFallback = () => (
   <div className="flex-1 flex flex-col items-center justify-center p-8 min-h-[320px] gap-3 select-none">
@@ -66,6 +68,26 @@ export const TenantLayout: React.FC<TenantLayoutProps> = ({
     SUPER_ADMIN_EMAILS.includes(currentUser.email.toLowerCase())
   );
 
+  // Real-time In-App Notifications Feed
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+
+  useEffect(() => {
+    if (!currentUser?.uid) return;
+    const unsub = subscribeToUserNotifications(
+      currentUser.uid,
+      activeTenantId || '',
+      (notifs) => {
+        setNotifications(notifs);
+      }
+    );
+    return () => unsub();
+  }, [currentUser?.uid, activeTenantId]);
+
+  const unreadCount = useMemo(() => {
+    return notifications.filter(n => !n.read).length;
+  }, [notifications]);
+
   return (
     <div className="h-full w-full flex flex-col bg-[var(--nb-bg)] text-[var(--nb-content)] overflow-hidden">
       {/* Super Admin Floating Oversight Bar */}
@@ -113,6 +135,21 @@ export const TenantLayout: React.FC<TenantLayoutProps> = ({
           {/* Right controls */}
           <div className="flex items-center gap-2 flex-shrink-0">
             <PWAInstallButton />
+
+            {/* Notification Bell */}
+            <button
+              onClick={() => setShowNotifications(true)}
+              className="nb-btn-icon relative cursor-pointer"
+              aria-label="Notification Inbox"
+              title="Live Notifications & Activity Feed"
+            >
+              <Bell className="w-4 h-4 text-[var(--nb-content)]" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 bg-rose-600 text-white font-mono font-bold text-[10px] rounded-full border border-black flex items-center justify-center shadow-sm animate-pulse">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+            </button>
 
             {/* Refresh */}
             <button
@@ -171,6 +208,15 @@ export const TenantLayout: React.FC<TenantLayoutProps> = ({
         activeTab={currentTab}
         onTabChange={handleTabChange}
         isOffline={!isOnline}
+      />
+
+      {/* Notification Inbox Slide-over Drawer */}
+      <NotificationInboxDrawer
+        isOpen={showNotifications}
+        onClose={() => setShowNotifications(false)}
+        notifications={notifications}
+        currentUserId={currentUser?.uid || ''}
+        activeTenantId={activeTenantId || ''}
       />
     </div>
   );
