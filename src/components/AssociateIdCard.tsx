@@ -5,6 +5,7 @@ import { UserProfile } from '../types';
 interface AssociateIdCardProps {
   member: UserProfile;
   tenantName?: string;
+  departmentName?: string;
   collegeCode?: string;
   yearBatch?: string;
 }
@@ -44,6 +45,7 @@ const getBadgeStyle = (position?: string, role?: string): string => {
 export default function AssociateIdCard({
   member,
   tenantName = 'AURA ML',
+  departmentName,
   collegeCode = 'AITK 2026'
 }: AssociateIdCardProps) {
   const [copied, setCopied] = useState(false);
@@ -56,6 +58,9 @@ export default function AssociateIdCard({
   const fallbackAvatar = `https://api.dicebear.com/9.x/notionists/svg?seed=${member.rollNumber || member.uid}`;
 
   const badgeStyle = getBadgeStyle(member.position, member.role);
+
+  // Dynamic department / branch label
+  const departmentLabel = member.department || member.branch || departmentName || 'CSE (AI & ML)';
 
   // Status computation
   const isExecutive =
@@ -74,7 +79,7 @@ export default function AssociateIdCard({
     if (member.year) {
       parts.push(member.year.toUpperCase());
     } else {
-      parts.push('CSE (AI & ML)');
+      parts.push(departmentLabel.toUpperCase());
     }
     if (member.section) {
       parts.push(`SEC ${member.section.toUpperCase()}`);
@@ -123,7 +128,7 @@ export default function AssociateIdCard({
             {tenantName}
           </span>
           <span className="text-[11px] font-mono text-neutral-600 shrink-0 hidden xs:inline">
-            • CSE (AI &amp; ML)
+            • {departmentLabel}
           </span>
         </div>
         <div className="shrink-0 bg-neutral-950 text-white font-mono text-[10px] sm:text-xs font-black px-2 py-0.5 rounded border border-neutral-950 shadow-[1.5px_1.5px_0_#000]">

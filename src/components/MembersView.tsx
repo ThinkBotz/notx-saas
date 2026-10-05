@@ -144,7 +144,7 @@ const LeaderMemberCard = ({ member }: { member: UserProfile }) => {
             </span>
           )}
           <span className="text-[10px] font-mono text-[var(--nb-secondary)]">
-            • CSE (AI &amp; ML) {member.year ? `• ${member.year}` : ''}
+            • {member.department || member.branch || 'CSE (AI & ML)'} {member.year ? `• ${member.year}` : ''}
           </span>
         </div>
 

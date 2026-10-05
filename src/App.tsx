@@ -548,15 +548,17 @@ export default function App() {
       <div className="h-full w-full bg-[var(--nb-bg)] flex flex-col items-center justify-center p-6 text-center select-none">
         <BrandLogo branding={currentBranding} size="xl" className="mb-6" />
         <h2 className="nb-headline text-3xl text-[var(--nb-content)]">
-          {currentBranding.appName || 'NOTX'}
+          NOTX CONNECT
         </h2>
         <p className="nb-label mt-1" style={{ color: 'var(--nb-tertiary)' }}>
-          {currentBranding.tagline || 'Connect'}
+          {currentBranding.appName || 'NOTX'} · {currentBranding.tagline || 'Connect'}
           {currentBranding.subtitle ? ` · ${currentBranding.subtitle}` : ''}
         </p>
-        <div className="mt-8 flex items-center gap-2 px-4 py-2 border border-[var(--nb-divider)] rounded-md bg-[var(--nb-surface)]">
+        <div className="mt-8 flex items-center gap-2 px-4 py-2 border border-[var(--nb-divider)] rounded-md bg-[var(--nb-surface)] shadow-[2px_2px_0_var(--nb-ink)]">
           <Loader2 className="w-4 h-4 animate-spin" style={{ color: 'var(--nb-accent)' }} />
-          <span className="nb-label" style={{ color: 'var(--nb-secondary)' }}>Syncing Cloud Services</span>
+          <span className="nb-label font-mono font-bold text-xs" style={{ color: 'var(--nb-secondary)' }}>
+            NOTX • LOADING PLATFORM...
+          </span>
         </div>
       </div>
     );

@@ -273,10 +273,13 @@ export default function AssociatesPage() {
       {/* 4. ID Cards Grid Section */}
       <main className="max-w-6xl mx-auto w-full px-4 sm:px-8 py-8 sm:py-12 flex-1">
         {loading ? (
-          <div className="py-20 flex flex-col items-center justify-center text-center">
-            <Loader2 className="w-10 h-10 text-amber-500 animate-spin mb-3 stroke-[2.5]" />
+          <div className="py-20 flex flex-col items-center justify-center text-center select-none">
+            <div className="w-12 h-12 bg-amber-400 border-[2.5px] border-neutral-950 flex items-center justify-center font-display font-black text-sm text-neutral-950 shadow-[3px_3px_0_#000] mb-3">
+              NOTX
+            </div>
+            <Loader2 className="w-6 h-6 text-neutral-950 animate-spin mb-2 stroke-[2.5]" />
             <div className="font-display font-black text-xl text-neutral-950 tracking-wide uppercase">
-              GENERATING CRYPTOGRAPHIC ID BADGES...
+              NOTX • LOADING...
             </div>
             <p className="font-mono text-xs text-neutral-600 mt-1">
               Synchronizing associate registry from {associationName} datastore
@@ -311,6 +314,7 @@ export default function AssociatesPage() {
                 key={member.uid || member.rollNumber}
                 member={member}
                 tenantName={associationName}
+                departmentName={departmentName}
                 collegeCode={collegeCode}
               />
             ))}
