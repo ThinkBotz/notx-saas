@@ -544,20 +544,21 @@ export default function App() {
   };
 
   if (isBooting && !currentUser) {
+    const brandName = currentBranding.appName || 'NOTX';
+    const brandTag = currentBranding.tagline || 'Connect';
     return (
       <div className="h-full w-full bg-[var(--nb-bg)] flex flex-col items-center justify-center p-6 text-center select-none">
         <BrandLogo branding={currentBranding} size="xl" className="mb-6" />
         <h2 className="nb-headline text-3xl text-[var(--nb-content)]">
-          NOTX CONNECT
+          {brandName} <span style={{ fontWeight: 500 }}>{brandTag}</span>
         </h2>
         <p className="nb-label mt-1" style={{ color: 'var(--nb-tertiary)' }}>
-          {currentBranding.appName || 'NOTX'} · {currentBranding.tagline || 'Connect'}
-          {currentBranding.subtitle ? ` · ${currentBranding.subtitle}` : ''}
+          {currentBranding.subtitle || 'Multi-Tenant Academic Association Platform'}
         </p>
         <div className="mt-8 flex items-center gap-2 px-4 py-2 border border-[var(--nb-divider)] rounded-md bg-[var(--nb-surface)] shadow-[2px_2px_0_var(--nb-ink)]">
           <Loader2 className="w-4 h-4 animate-spin" style={{ color: 'var(--nb-accent)' }} />
           <span className="nb-label font-mono font-bold text-xs" style={{ color: 'var(--nb-secondary)' }}>
-            NOTX • LOADING PLATFORM...
+            {brandName.toUpperCase()} • LOADING...
           </span>
         </div>
       </div>
@@ -579,8 +580,24 @@ export default function App() {
     );
   }
 
-  // Unauthenticated -> Show Login
+  // Public routes accessible without auth — check before auth gate
   if (!currentUser) {
+    const publicPath = location.pathname.toLowerCase();
+    // /associates or /associate or /:tenantId/associates — all public
+    if (
+      publicPath === '/associates' ||
+      publicPath === '/associate' ||
+      publicPath.endsWith('/associates') ||
+      publicPath.endsWith('/associate')
+    ) {
+      return (
+        <React.Suspense fallback={<ViewLoadingFallback />}>
+          <AssociatesPage />
+        </React.Suspense>
+      );
+    }
+
+    // Unauthenticated -> Show Login
     return (
       <>
         <PWAUpdateToast />
