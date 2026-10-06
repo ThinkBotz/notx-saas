@@ -109,10 +109,11 @@ service cloud.firestore {
         resource.data.tenantId != null && isTenantAdmin(resource.data.tenantId)
       ) || (
         isOwner(userId) &&
-        // Self-updates cannot elevate role or change super admin status or change tenantId
+        // Self-updates cannot elevate role or change super admin status or change tenantId or alter system login email
         request.resource.data.role == resource.data.role &&
         request.resource.data.isSuperAdmin == resource.data.isSuperAdmin &&
-        request.resource.data.tenantId == resource.data.tenantId
+        request.resource.data.tenantId == resource.data.tenantId &&
+        request.resource.data.email == resource.data.email
       );
       allow delete: if isSuperAdmin() || (
         resource.data.tenantId != null && isTenantAdmin(resource.data.tenantId)

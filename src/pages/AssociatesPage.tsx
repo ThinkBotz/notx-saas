@@ -12,8 +12,10 @@ import {
   Loader2
 } from 'lucide-react';
 import { fetchUsers, getTenant } from '../firebase';
-import { UserProfile, Tenant } from '../types';
+import { UserProfile, Tenant, SUPER_ADMIN_EMAILS } from '../types';
+import { useTenantContext } from '../context/TenantContext';
 import AssociateIdCard from '../components/AssociateIdCard';
+import EditAssociateModal from '../components/EditAssociateModal';
 
 // Helper for executive ranking
 const getExecutiveRank = (position?: string, role?: string): number => {
@@ -38,11 +40,24 @@ export default function AssociatesPage() {
   // If accessed directly at /associates, default to 'auraml-aitk' or saved active tenant
   const targetTenantId = (routeTenantId || localStorage.getItem('notx_active_tenant') || 'auraml-aitk').toLowerCase().trim();
 
+  const { currentUser } = useTenantContext();
+
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [activeCategory, setActiveCategory] = useState<'ALL' | 'EXECUTIVES' | 'TECH' | 'OPERATIONS' | 'STUDENTS'>('ALL');
+  const [editingMember, setEditingMember] = useState<UserProfile | null>(null);
+
+  // Check if current user has administrator or super administrator authority to edit cards
+  const isSuperAdminUser = Boolean(
+    currentUser && (
+      currentUser.isSuperAdmin ||
+      (currentUser.email && SUPER_ADMIN_EMAILS.includes(currentUser.email.toLowerCase()))
+    )
+  );
+  const isTenantAdmin = Boolean(currentUser && currentUser.role === 'admin');
+  const canEditCards = isSuperAdminUser || isTenantAdmin;
 
   useEffect(() => {
     let isMounted = true;
@@ -226,6 +241,13 @@ export default function AssociatesPage() {
             Hi There 👋 <br />
             This is the list of all the associates of the AURA ML association.
           </p>
+
+          {canEditCards && (
+            <div className="mt-4 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-neutral-950 text-amber-400 font-mono text-xs font-black border-2 border-neutral-950 shadow-[2.5px_2.5px_0_#fff]">
+              <Sparkles className="w-4 h-4 text-amber-400" />
+              <span>SUPER ADMIN EDIT MODE ACTIVE • YOU CAN MODIFY BADGES DIRECTLY</span>
+            </div>
+          )}
         </div>
       </section>
 
@@ -316,11 +338,26 @@ export default function AssociatesPage() {
                 tenantName={associationName}
                 departmentName={departmentName}
                 collegeCode={collegeCode}
+                canEdit={canEditCards}
+                onEdit={() => setEditingMember(member)}
               />
             ))}
           </div>
         )}
       </main>
+
+      {/* Super Admin Edit Modal */}
+      {editingMember && (
+        <EditAssociateModal
+          member={editingMember}
+          tenantName={associationName}
+          onClose={() => setEditingMember(null)}
+          onSaved={(updatedUser) => {
+            setUsers(prev => prev.map(u => u.uid === updatedUser.uid ? updatedUser : u));
+            setEditingMember(null);
+          }}
+        />
+      )}
 
       {/* 5. Neo-Brutalist Footer */}
       <footer className="border-t-[3px] border-[#111111] bg-[#FFFDF8] px-4 sm:px-8 py-6 text-center shadow-[0_-3px_0_#111111]">

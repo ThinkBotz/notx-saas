@@ -40,6 +40,7 @@ export interface UserProfile {
   department?: string;
   linkedin?: string;
   responsibilities?: string;
+  personalEmail?: string; // Student or user's self-chosen personal contact email (separate from system login ID)
   googleEmail?: string;
   powers?: AssociatePowers; // Admin assigns custom powers to associates
   assignedEvents?: string[]; // Admin assigns coordinators to specific events (array of eventIds)

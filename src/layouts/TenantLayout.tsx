@@ -104,7 +104,10 @@ export const TenantLayout: React.FC<TenantLayoutProps> = ({
             </span>
           </div>
           <button
-            onClick={() => setIsOverseeingTenant(false)}
+            onClick={() => {
+              setIsOverseeingTenant(false);
+              navigate('/superadmin');
+            }}
             className="nb-btn-ghost text-[10px] font-mono font-bold uppercase py-1 px-3 bg-white text-neutral-900 border border-black cursor-pointer shadow-[1.5px_1.5px_0_#000] hover:bg-neutral-100 flex-shrink-0"
           >
             ← Control Center

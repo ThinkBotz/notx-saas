@@ -3,10 +3,11 @@ import {
   User, Mail, Phone, Code, Award, Edit, Save, X, Eye, Lock, 
   FileBadge, Calendar, Settings, ArrowRight, QrCode, 
   MessageSquare, Camera, Sparkles, Grid, CheckCircle2, Clock, MapPin,
-  PhoneCall, Edit3, ShieldCheck, Users, Smartphone, RefreshCw, Copy, ExternalLink
+  PhoneCall, Edit3, ShieldCheck, Users, Smartphone, RefreshCw, Copy, ExternalLink,
+  Upload, Shield
 } from 'lucide-react';
 import { checkForAppUpdates } from '../pwaUpdateManager';
-import { UserProfile, EventRegistration, DepartmentEvent, SupportInfo, DEFAULT_SUPPORT_INFO, CertificateTemplate, DEFAULT_CERTIFICATE_TEMPLATE, IssuedCertificate, AppBranding, DEFAULT_BRANDING, Tenant } from '../types';
+import { UserProfile, EventRegistration, DepartmentEvent, SupportInfo, DEFAULT_SUPPORT_INFO, CertificateTemplate, DEFAULT_CERTIFICATE_TEMPLATE, IssuedCertificate, AppBranding, DEFAULT_BRANDING, Tenant, SUPER_ADMIN_EMAILS } from '../types';
 import CertificateCard from './CertificateCard';
 import { 
   updateUserProfile,
@@ -16,6 +17,7 @@ import {
 } from '../firebase';
 import { GoogleAuthProvider, signInWithPopup, updatePassword } from 'firebase/auth';
 import { CRAFTWORK_SPECIAL_DATA_URL } from '../lib/craftworkAvatar';
+import { uploadToCloudinary } from '../cloudinary';
 import { AvatarGalleryModal } from './AvatarGalleryModal';
 import EditSupportBoxModal from './EditSupportBoxModal';
 import CertificateRecipientsModal from './CertificateRecipientsModal';
@@ -75,7 +77,7 @@ export default function ProfileView({
   }, [supportInfo]);
 
   const [name, setName] = useState(user.name || '');
-  const [email, setEmail] = useState(user.email || '');
+  const [personalEmail, setPersonalEmail] = useState(user.personalEmail || '');
   const [year, setYear] = useState(user.year || '3rd Year');
   const [section, setSection] = useState(user.section || 'A');
   const [newPassword, setNewPassword] = useState('');
@@ -85,8 +87,34 @@ export default function ProfileView({
   const [responsibilities, setResponsibilities] = useState(memberResponsibilities());
   const [profilePic, setProfilePic] = useState(user.profile_pic || '');
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
   const [updateMessage, setUpdateMessage] = useState<string | null>(null);
+
+  // Check if user is an associate, admin, or super admin (elevated roles get official Cloudinary photo upload)
+  const isElevatedRole = Boolean(
+    user.isSuperAdmin ||
+    user.role === 'admin' ||
+    user.role === 'president' ||
+    user.role === 'associate' ||
+    user.role === 'coordinator' ||
+    (user.email && SUPER_ADMIN_EMAILS.includes(user.email.toLowerCase()))
+  );
+
+  const handleCloudinaryUpload = async (file: File) => {
+    if (!file) return;
+    setIsUploadingPhoto(true);
+    try {
+      const url = await uploadToCloudinary(file);
+      setProfilePic(url);
+    } catch (err: any) {
+      console.error('Cloudinary photo upload error:', err);
+      alert(err.message || 'Failed to upload photo to Cloudinary.');
+    } finally {
+      setIsUploadingPhoto(false);
+    }
+  };
+
   const isStandalone = typeof window !== 'undefined' && (
     window.matchMedia('(display-mode: standalone)').matches || 
     (window.navigator as unknown as { standalone?: boolean }).standalone === true
@@ -179,9 +207,24 @@ export default function ProfileView({
 
   const handleSave = async () => {
     try {
+      // Validate personal contact email against privilege escalation attempts
+      const cleanPersonal = personalEmail.trim();
+      if (cleanPersonal) {
+        const lowerPersonal = cleanPersonal.toLowerCase();
+        if (
+          SUPER_ADMIN_EMAILS.some(s => s.toLowerCase() === lowerPersonal) ||
+          (activeTenant?.adminEmail && activeTenant.adminEmail.toLowerCase() === lowerPersonal)
+        ) {
+          alert('Security violation: Cannot use an administrative system email as personal contact address.');
+          return;
+        }
+      }
+
+      // NOTE: user.email (system login ID / synthetic email) is strictly excluded from self-updates
+      // to prevent account hijacking or unauthorized role escalation!
       const updates: Partial<UserProfile> = {
         name,
-        email,
+        personalEmail: cleanPersonal,
         phone,
         year,
         section,
@@ -362,8 +405,59 @@ export default function ProfileView({
         className="bg-[var(--nb-surface)] p-4 rounded-lg space-y-3"
         style={{ border: '2px solid var(--nb-ink)', boxShadow: 'var(--shadow-hard-sm)' }}
       >
-        {/* Craftwork / Userpic Avatar Picker when Editing */}
-        {isEditing && (
+        {/* Avatar Section: Elevated roles (Associates / Admins) get Cloudinary Photo Upload; Students get Avatar Models */}
+        {isEditing && isElevatedRole && (
+          <div className="pb-3 border-b border-[var(--nb-ink)]/20 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="nb-label text-[10px] text-[var(--nb-accent)]">OFFICIAL PROFILE PHOTO (CLOUDINARY)</span>
+              <span className="text-[10px] font-mono font-bold bg-amber-400 text-neutral-950 px-2 py-0.5 rounded border border-black shadow-[1px_1px_0_#000]">
+                {user.role?.toUpperCase() || 'ASSOCIATE'} PHOTO
+              </span>
+            </div>
+            
+            <div className="p-3 bg-[var(--nb-surface-accent)] rounded-lg border-2 border-[var(--nb-ink)] space-y-2.5">
+              <label className="block cursor-pointer">
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleCloudinaryUpload(file);
+                  }}
+                  disabled={isUploadingPhoto}
+                />
+                <div className="nb-btn py-2.5 px-3 text-xs font-bold text-center flex items-center justify-center gap-2 cursor-pointer shadow-[2px_2px_0_#000]">
+                  {isUploadingPhoto ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin text-[var(--nb-accent)]" />
+                      <span>Uploading to Cloudinary...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-4 h-4" />
+                      <span>Upload Official Photo from Device</span>
+                    </>
+                  )}
+                </div>
+              </label>
+
+              <div>
+                <label className="nb-label text-[9px] text-[var(--nb-secondary)] block mb-1">Or Photo URL (Cloudinary / Web)</label>
+                <input
+                  type="text"
+                  value={profilePic}
+                  onChange={(e) => setProfilePic(e.target.value)}
+                  placeholder="https://res.cloudinary.com/..."
+                  className="nb-input py-1 text-xs w-full font-mono"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Craftwork / Userpic Avatar Picker when Editing (Students only) */}
+        {isEditing && !isElevatedRole && (
           <div className="pb-3 border-b border-[var(--nb-ink)]/20 space-y-2.5">
             <div className="flex items-center justify-between">
               <span className="nb-label text-[10px] text-[var(--nb-accent)]">CHOOSE AVATAR MODEL</span>
@@ -440,17 +534,40 @@ export default function ProfileView({
           </div>
         </div>
 
+        {/* 1. Account System Login Email (Protected / Immutable in UI) */}
+        <div className="flex items-center gap-3 text-xs border-t border-[var(--nb-ink)]/15 pt-2.5">
+          <Shield className="w-4 h-4 text-[var(--nb-secondary)] flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="nb-label text-[9px] text-[var(--nb-secondary)]">SYSTEM ACCOUNT ID (LOGIN EMAIL)</span>
+              <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-neutral-200 text-neutral-800 font-bold border border-neutral-300">
+                LOCKED
+              </span>
+            </div>
+            <div className="text-[var(--nb-secondary)] mt-0.5 font-mono text-xs truncate select-all">
+              {user.email}
+            </div>
+            <p className="text-[10px] text-neutral-500 mt-0.5">
+              Backend credential managed by platform authentication.
+            </p>
+          </div>
+        </div>
+
+        {/* 2. Personal / Contact Email of their wish */}
         <div className="flex items-center gap-3 text-xs border-t border-[var(--nb-ink)]/15 pt-2.5">
           <Mail className="w-4 h-4 text-[var(--nb-secondary)] flex-shrink-0" />
-          <div className="flex-1">
-            <div className="nb-label text-[9px] text-[var(--nb-secondary)]">EMAIL ADDRESS</div>
+          <div className="flex-1 min-w-0">
+            <div className="nb-label text-[9px] text-[var(--nb-secondary)]">PERSONAL / CONTACT EMAIL (YOUR WISH)</div>
             {!isEditing ? (
-              <div className="text-[var(--nb-secondary)] mt-0.5 font-mono text-xs">{user.email}</div>
+              <div className="text-[var(--nb-content)] font-mono text-xs mt-0.5">
+                {user.personalEmail || <span className="text-neutral-400 italic">Not added yet</span>}
+              </div>
             ) : (
               <input 
                 type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                value={personalEmail}
+                onChange={(e) => setPersonalEmail(e.target.value)}
+                placeholder="e.g. personal@gmail.com (of your choice)"
                 className="nb-input py-1 text-xs mt-1 w-full font-mono"
               />
             )}

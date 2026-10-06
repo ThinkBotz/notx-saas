@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Mail, Linkedin, Copy, Check } from 'lucide-react';
+import { Linkedin, Copy, Check, Edit3 } from 'lucide-react';
 import { UserProfile } from '../types';
 
 interface AssociateIdCardProps {
@@ -8,6 +8,8 @@ interface AssociateIdCardProps {
   departmentName?: string;
   collegeCode?: string;
   yearBatch?: string;
+  canEdit?: boolean;
+  onEdit?: () => void;
 }
 
 // Helper to determine role badge styling in neo-brutalism
@@ -46,7 +48,9 @@ export default function AssociateIdCard({
   member,
   tenantName = 'AURA ML',
   departmentName,
-  collegeCode = 'AITK 2026'
+  collegeCode = 'AITK 2026',
+  canEdit = false,
+  onEdit
 }: AssociateIdCardProps) {
   const [copied, setCopied] = useState(false);
 
@@ -225,15 +229,15 @@ export default function AssociateIdCard({
 
         {/* Contact & Share Actions */}
         <div className="flex items-center gap-1.5 shrink-0">
-          {member.email && (
-            <a
-              href={`mailto:${member.email}`}
-              className="inline-flex items-center gap-1 font-mono text-[10px] sm:text-[11px] font-black px-2 py-1 rounded bg-amber-300 hover:bg-amber-400 text-neutral-950 border border-neutral-950 shadow-[1.5px_1.5px_0_#000] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
-              title={`Email ${cleanName}`}
+          {canEdit && onEdit && (
+            <button
+              onClick={onEdit}
+              className="inline-flex items-center gap-1 font-mono text-[10px] sm:text-[11px] font-black px-2 py-1 rounded bg-amber-400 hover:bg-amber-500 text-neutral-950 border border-neutral-950 shadow-[1.5px_1.5px_0_#000] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
+              title={`Edit ${cleanName}'s ID Badge`}
             >
-              <Mail className="w-3 h-3" />
-              <span>EMAIL</span>
-            </a>
+              <Edit3 className="w-3 h-3" />
+              <span>EDIT</span>
+            </button>
           )}
           {member.linkedin && (
             <a
