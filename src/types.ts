@@ -69,6 +69,19 @@ export interface AssociateMember {
   created_at?: string;
 }
 
+export interface AdminAuthRecord {
+  id: string; // clean email
+  email: string;
+  role: 'superadmin' | 'admin';
+  tenantId?: string;
+  name?: string;
+  passwordHash?: string;
+  status: 'active' | 'inactive';
+  created_at: string;
+  updated_at?: string;
+}
+
+
 export interface DepartmentEvent {
   tenantId?: string;
   images?: string[];

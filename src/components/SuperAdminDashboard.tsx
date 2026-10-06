@@ -222,6 +222,7 @@ export default function SuperAdminDashboard({
   const [editName, setEditName] = useState('');
   const [editShortCode, setEditShortCode] = useState('');
   const [editAdminEmail, setEditAdminEmail] = useState('');
+  const [editAdminPassword, setEditAdminPassword] = useState('');
   const [editInstitution, setEditInstitution] = useState('');
   const [editAccentColor, setEditAccentColor] = useState('indigo');
   const [editThemePreset, setEditThemePreset] = useState<ThemePresetKey>('cyber-gold');
@@ -236,6 +237,7 @@ export default function SuperAdminDashboard({
   const [newName, setNewName] = useState('');
   const [newShortCode, setNewShortCode] = useState('');
   const [newAdminEmail, setNewAdminEmail] = useState('');
+  const [newAdminPassword, setNewAdminPassword] = useState('');
   const [newInstitution, setNewInstitution] = useState('Annamacharya Institute of Tech & Sciences');
   const [newAccentColor, setNewAccentColor] = useState('indigo');
   const [newThemePreset, setNewThemePreset] = useState<ThemePresetKey>('cobalt-tech');
@@ -678,6 +680,7 @@ export default function SuperAdminDashboard({
     setEditName(tenant.name);
     setEditShortCode(tenant.shortCode);
     setEditAdminEmail(tenant.adminEmail);
+    setEditAdminPassword('');
     setEditInstitution(tenant.institution || tenant.branding?.institution || '');
     setEditAccentColor(tenant.branding?.accentColor || 'indigo');
     const resolvedTheme = resolveTenantTheme(tenant.branding);
@@ -717,7 +720,7 @@ export default function SuperAdminDashboard({
           theme: chosenTheme
         }
       };
-      await updateTenant(editingTenant.tenantId, updates);
+      await updateTenant(editingTenant.tenantId, updates, editAdminPassword.trim() || undefined);
       try {
         if (updates.branding) {
           await updateAppBranding(updates.branding, editingTenant.tenantId);
@@ -781,7 +784,7 @@ export default function SuperAdminDashboard({
         createdBy: currentUser.email
       };
 
-      await createTenant(newTenant);
+      await createTenant(newTenant, newAdminPassword.trim() || undefined);
       try {
         await updateAppBranding(newTenant.branding, newTenant.tenantId);
       } catch (e) {
@@ -792,6 +795,7 @@ export default function SuperAdminDashboard({
       setNewName('');
       setNewShortCode('');
       setNewAdminEmail('');
+      setNewAdminPassword('');
       setNewLoginHeroText('');
       setGlobalFeedback(`Tenant "${newTenant.name}" provisioned with ${chosenTheme.name} theme!`);
       setTimeout(() => setGlobalFeedback(''), 4000);
@@ -4064,7 +4068,7 @@ export default function SuperAdminDashboard({
 
                   <div>
                     <label className="block nb-label text-[10px] text-[var(--nb-secondary)] mb-1 font-bold">
-                      TENANT ADMIN GMAIL (TRANSFERS RIGHTS ON LOGIN) *
+                      TENANT ADMIN EMAIL (GOOGLE SSO OR PORTAL LOGIN) *
                     </label>
                     <input
                       type="email"
@@ -4074,7 +4078,33 @@ export default function SuperAdminDashboard({
                       className="w-full bg-[var(--nb-surface-accent)] text-xs text-[var(--nb-content)] rounded-md p-2.5 outline-none font-mono font-bold border border-[var(--nb-ink)]"
                     />
                     <p className="text-[10px] text-[var(--nb-secondary)] mt-1">
-                      Changing this email assigns Admin rights to the new Gmail on their next Google sign-in.
+                      Assigned administrator email for this department. Admin can sign in via Google SSO or Administrator Portal.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block nb-label text-[10px] text-[var(--nb-secondary)] mb-1 font-bold">
+                      RESET ADMIN PORTAL PASSWORD (OPTIONAL)
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="Enter new password to reset (Leave blank to keep existing)"
+                        value={editAdminPassword}
+                        onChange={(e) => setEditAdminPassword(e.target.value)}
+                        className="flex-1 bg-[var(--nb-surface-accent)] text-xs text-[var(--nb-content)] rounded-md p-2.5 outline-none font-mono border border-[var(--nb-ink)]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setEditAdminPassword(`Admin@${(editShortCode || editingTenant.shortCode || 'Dept').toUpperCase().replace(/[^A-Z0-9]/g, '')}2026`)}
+                        className="nb-btn-ghost text-[10px] font-mono font-bold uppercase px-3 py-1 cursor-pointer bg-white text-neutral-900 border border-black shadow-[1px_1px_0_#000]"
+                        title="Generate strong default password"
+                      >
+                        Auto-Gen
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-[var(--nb-secondary)] mt-1">
+                      Sets or updates the password so the department administrator can log in using Email + Password in the Administrator Portal.
                     </p>
                   </div>
 
@@ -4300,18 +4330,44 @@ export default function SuperAdminDashboard({
 
                   <div>
                     <label className="block nb-label text-[10px] text-[var(--nb-secondary)] mb-1 font-bold">
-                      TENANT ADMIN GMAIL (GOOGLE AUTH VERIFIED) *
+                      TENANT ADMIN EMAIL (GOOGLE SSO OR PORTAL LOGIN) *
                     </label>
                     <input
                       type="email"
                       required
-                      placeholder="e.g. ece.hod@gmail.com"
+                      placeholder="e.g. ece.hod@gmail.com or admin@college.edu"
                       value={newAdminEmail}
                       onChange={(e) => setNewAdminEmail(e.target.value)}
                       className="w-full bg-[var(--nb-surface-accent)] text-xs text-[var(--nb-content)] rounded-md p-2.5 outline-none font-mono font-bold border border-[var(--nb-ink)]"
                     />
                     <p className="text-[10px] text-[var(--nb-secondary)] mt-1">
-                      This Gmail will automatically receive Admin rights when signing in with Google.
+                      This email will receive Admin rights when signing in via Google SSO or the Administrator Portal.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block nb-label text-[10px] text-[var(--nb-secondary)] mb-1 font-bold">
+                      INITIAL ADMIN PORTAL PASSWORD (OPTIONAL)
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="e.g. Admin@ECE2026 (Optional)"
+                        value={newAdminPassword}
+                        onChange={(e) => setNewAdminPassword(e.target.value)}
+                        className="flex-1 bg-[var(--nb-surface-accent)] text-xs text-[var(--nb-content)] rounded-md p-2.5 outline-none font-mono border border-[var(--nb-ink)]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setNewAdminPassword(`Admin@${(newShortCode || newTenantId || 'Dept').toUpperCase().replace(/[^A-Z0-9]/g, '')}2026`)}
+                        className="nb-btn-ghost text-[10px] font-mono font-bold uppercase px-3 py-1 cursor-pointer bg-white text-neutral-900 border border-black shadow-[1px_1px_0_#000]"
+                        title="Generate strong default password"
+                      >
+                        Auto-Gen
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-[var(--nb-secondary)] mt-1">
+                      If set, the department administrator can log in immediately using Email + Password in the Administrator Portal without requiring Google sign-in.
                     </p>
                   </div>
                 </div>

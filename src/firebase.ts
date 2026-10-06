@@ -47,8 +47,10 @@ import {
   TicketReply,
   TicketCategory,
   TicketStatus,
-  AppNotification
+  AppNotification,
+  AdminAuthRecord
 } from './types';
+import { hashPassword } from './utils/auth';
 
 
 const app = initializeApp(firebaseConfig);
@@ -114,14 +116,145 @@ export async function getTenant(tenantId?: string): Promise<Tenant | null> {
   }
 }
 
-export async function createTenant(tenant: Tenant): Promise<void> {
+export async function createAdminAuthAccount(
+  email: string,
+  password: string
+): Promise<{ uid?: string; error?: string }> {
+  try {
+    const existingApps = getSecondaryApps();
+    const appName = "SecondaryAdminAuthApp";
+    const secApp = existingApps.find(a => a.name === appName) || initializeApp(firebaseConfig, appName);
+    const secAuth = getAuth(secApp);
+    
+    const userCredential = await createUserWithEmailAndPassword(secAuth, email.trim().toLowerCase(), password);
+    await signOutSecondary(secAuth);
+    return { uid: userCredential.user.uid };
+  } catch (error: any) {
+    if (error?.code === 'auth/email-already-in-use') {
+      return { error: 'Email already registered in Firebase Auth' };
+    }
+    console.warn("Secondary admin auth account registration note:", error?.message);
+    return { error: error?.message };
+  }
+}
+
+export async function fetchAdminAuthRecord(email: string): Promise<AdminAuthRecord | null> {
+  const cleanEmail = email.trim().toLowerCase();
+  if (!cleanEmail) return null;
+  try {
+    const snap = await getDoc(doc(db, 'admin_auth', cleanEmail));
+    if (snap.exists()) {
+      return snap.data() as AdminAuthRecord;
+    }
+    return null;
+  } catch (err) {
+    console.warn('fetchAdminAuthRecord note:', err);
+    return null;
+  }
+}
+
+export async function createOrUpdateAdminAuthRecord(record: AdminAuthRecord): Promise<void> {
+  const cleanEmail = record.email.trim().toLowerCase();
+  try {
+    await setDoc(doc(db, 'admin_auth', cleanEmail), cleanUndefined({
+      ...record,
+      id: cleanEmail,
+      email: cleanEmail
+    }), { merge: true });
+  } catch (err) {
+    console.error('Failed to save admin auth record:', err);
+  }
+}
+
+export async function deleteAdminAuthRecord(email: string): Promise<void> {
+  const cleanEmail = email.trim().toLowerCase();
+  try {
+    await deleteDoc(doc(db, 'admin_auth', cleanEmail));
+  } catch (err) {
+    console.warn('Failed to delete admin auth record:', err);
+  }
+}
+
+export async function seedAdminAuthIfEmpty(): Promise<void> {
+  try {
+    const colRef = collection(db, 'admin_auth');
+    const snap = await getDocs(query(colRef, limit(1)));
+    if (snap.empty) {
+      // Seed default Super Admin
+      for (const superEmail of SUPER_ADMIN_EMAILS) {
+        const clean = superEmail.trim().toLowerCase();
+        await setDoc(doc(db, 'admin_auth', clean), {
+          id: clean,
+          email: clean,
+          role: 'superadmin',
+          tenantId: '',
+          name: 'Super Administrator',
+          status: 'active',
+          created_at: new Date().toISOString()
+        });
+      }
+    }
+  } catch (err) {
+    console.warn('seedAdminAuthIfEmpty note:', err);
+  }
+}
+
+export async function resetTenantAdminPassword(
+  tenantId: string,
+  adminEmail: string,
+  newPassword: string
+): Promise<void> {
+  const cleanId = tenantId.trim().toLowerCase();
+  const cleanEmail = adminEmail.trim().toLowerCase();
+  const passHash = await hashPassword(newPassword);
+
+  // 1. Update admin_auth record
+  await setDoc(doc(db, 'admin_auth', cleanEmail), cleanUndefined({
+    id: cleanEmail,
+    email: cleanEmail,
+    role: 'admin',
+    tenantId: cleanId,
+    passwordHash: passHash,
+    status: 'active',
+    updated_at: new Date().toISOString()
+  }), { merge: true });
+
+  // 2. Update user profile password hash in users collection
+  const q = query(collection(db, 'users'), where('tenantId', '==', cleanId));
+  const snap = await getDocs(q);
+  for (const uDoc of snap.docs) {
+    const uData = uDoc.data() as UserProfile;
+    if (uData.email?.toLowerCase() === cleanEmail || uData.role === 'admin') {
+      await updateDoc(doc(db, 'users', uDoc.id), {
+        password: passHash
+      });
+    }
+  }
+
+  // 3. Attempt secondary account creation if account doesn't exist in Firebase Auth yet
+  await createAdminAuthAccount(cleanEmail, newPassword);
+
+  // 4. Log audit entry
+  await writeAuditLog({
+    action: 'admin.password_reset',
+    tenantId: cleanId,
+    entityType: 'tenant',
+    entityId: cleanId,
+    entityName: cleanEmail,
+    details: `Superadmin updated administrative password credentials for ${cleanEmail} (${cleanId}).`,
+    severity: 'warning'
+  });
+}
+
+export async function createTenant(tenant: Tenant, initialAdminPassword?: string): Promise<void> {
   const cleanId = tenant.tenantId.trim().toLowerCase();
   const path = `tenants/${cleanId}`;
   try {
+    const cleanAdminEmail = tenant.adminEmail.trim().toLowerCase();
     const finalTenant: Tenant = {
       ...tenant,
       tenantId: cleanId,
-      adminEmail: tenant.adminEmail.trim().toLowerCase(),
+      adminEmail: cleanAdminEmail,
       status: tenant.status || 'active',
       branding: tenant.branding || {
         ...DEFAULT_BRANDING,
@@ -134,21 +267,42 @@ export async function createTenant(tenant: Tenant): Promise<void> {
     };
     await setDoc(doc(db, 'tenants', cleanId), cleanUndefined(finalTenant));
 
+    // Optional password hash
+    let passwordHash = '';
+    if (initialAdminPassword && initialAdminPassword.trim()) {
+      passwordHash = await hashPassword(initialAdminPassword.trim());
+      // Provision Firebase Auth account in secondary instance
+      await createAdminAuthAccount(cleanAdminEmail, initialAdminPassword.trim());
+    }
+
     // Provision default tenant admin user profile in Firestore
     const adminUid = `admin_${cleanId}_${Date.now()}`;
     const adminUser: UserProfile = {
       uid: adminUid,
       name: `${tenant.shortCode || tenant.name} Admin`,
-      email: finalTenant.adminEmail,
-      googleEmail: finalTenant.adminEmail,
+      email: cleanAdminEmail,
+      googleEmail: cleanAdminEmail,
       role: 'admin',
       tenantId: cleanId,
       position: 'Department Admin',
       department: tenant.name,
       responsibilities: `Administrative control for ${tenant.name}`,
+      password: passwordHash || undefined,
       created_at: new Date().toISOString()
     };
     await setDoc(doc(db, 'users', adminUid), cleanUndefined(adminUser));
+
+    // Register into protected admin_auth collection
+    await setDoc(doc(db, 'admin_auth', cleanAdminEmail), cleanUndefined({
+      id: cleanAdminEmail,
+      email: cleanAdminEmail,
+      role: 'admin',
+      tenantId: cleanId,
+      name: adminUser.name,
+      passwordHash: passwordHash || undefined,
+      status: 'active',
+      created_at: new Date().toISOString()
+    }));
 
     // Initialize tenant-scoped app configuration with initial branding & settings
     const configDocId = `config_${cleanId}`;
@@ -167,7 +321,7 @@ export async function createTenant(tenant: Tenant): Promise<void> {
       entityType: 'tenant',
       entityId: cleanId,
       entityName: finalTenant.name,
-      details: `Provisioned new multi-tenant organization "${finalTenant.name}" (${cleanId}) with Admin: ${finalTenant.adminEmail}.`,
+      details: `Provisioned new multi-tenant organization "${finalTenant.name}" (${cleanId}) with Admin: ${cleanAdminEmail}.`,
       severity: 'warning'
     });
   } catch (error) {
@@ -215,6 +369,9 @@ export async function transferTenantAdminOwnership(
         // Stale or previous admin found for this tenant! Remove their profile completely
         console.log(`[Ownership Transfer] Removing previous admin user profile: ${u.uid} (${u.email}) from tenant: ${cleanId}`);
         await deleteDoc(doc(db, 'users', userDoc.id));
+        if (u.email) {
+          await deleteAdminAuthRecord(u.email);
+        }
       }
     }
 
@@ -235,13 +392,28 @@ export async function transferTenantAdminOwnership(
       };
       await setDoc(doc(db, 'users', adminUid), cleanUndefined(newAdminUser));
     }
+
+    // 3. Ensure admin_auth document is active
+    await setDoc(doc(db, 'admin_auth', cleanNewEmail), cleanUndefined({
+      id: cleanNewEmail,
+      email: cleanNewEmail,
+      role: 'admin',
+      tenantId: cleanId,
+      name: `${deptName || cleanId.toUpperCase()} Admin`,
+      status: 'active',
+      updated_at: new Date().toISOString()
+    }), { merge: true });
   } catch (err) {
     console.error('[Ownership Transfer Error]:', err);
     throw err;
   }
 }
 
-export async function updateTenant(tenantId: string, updates: Partial<Tenant>): Promise<void> {
+export async function updateTenant(
+  tenantId: string, 
+  updates: Partial<Tenant>, 
+  newAdminPassword?: string
+): Promise<void> {
   const cleanId = tenantId.trim().toLowerCase();
   const path = `tenants/${cleanId}`;
   try {
@@ -259,6 +431,11 @@ export async function updateTenant(tenantId: string, updates: Partial<Tenant>): 
         finalAdminEmail,
         updates.shortCode || updates.name || prevTenant?.shortCode || prevTenant?.name || cleanId
       );
+
+      // If new password provided by Superadmin, apply reset
+      if (newAdminPassword && newAdminPassword.trim()) {
+        await resetTenantAdminPassword(cleanId, finalAdminEmail, newAdminPassword.trim());
+      }
     }
 
     await writeAuditLog({
@@ -696,9 +873,9 @@ const INITIAL_ALBUMS: Album[] = [
 ];
 
 
-// Seeding engine - Template auto-seeding disabled to ensure multi-tenant blank state
 export async function seedDatabaseIfEmpty() {
   try {
+    await seedAdminAuthIfEmpty();
     const seedStatusRef = doc(db, 'appSettings', 'seed_status');
     const seedSnap = await getDoc(seedStatusRef);
     if (!seedSnap.exists() || !seedSnap.data()?.isSeeded) {

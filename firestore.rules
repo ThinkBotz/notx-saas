@@ -14,7 +14,10 @@ service cloud.firestore {
           'syedsameer2244@gmail.com',
           'admin@thinkbotz.in'
         ] ||
-        request.auth.token.isSuperAdmin == true
+        request.auth.token.isSuperAdmin == true ||
+        (exists(/databases/$(database)/documents/admin_auth/$(request.auth.token.email.lower())) &&
+         get(/databases/$(database)/documents/admin_auth/$(request.auth.token.email.lower())).data.role == 'superadmin' &&
+         get(/databases/$(database)/documents/admin_auth/$(request.auth.token.email.lower())).data.status == 'active')
       );
     }
 
@@ -24,9 +27,14 @@ service cloud.firestore {
 
     function isTenantAdmin(tenantId) {
       return isSuperAdmin() || (
-        isAuthenticated() &&
-        exists(/databases/$(database)/documents/tenants/$(tenantId)) &&
-        get(/databases/$(database)/documents/tenants/$(tenantId)).data.adminEmail.lower() == request.auth.token.email.lower()
+        isAuthenticated() && (
+          (exists(/databases/$(database)/documents/tenants/$(tenantId)) &&
+           get(/databases/$(database)/documents/tenants/$(tenantId)).data.adminEmail.lower() == request.auth.token.email.lower()) ||
+          (exists(/databases/$(database)/documents/admin_auth/$(request.auth.token.email.lower())) &&
+           get(/databases/$(database)/documents/admin_auth/$(request.auth.token.email.lower())).data.role == 'admin' &&
+           get(/databases/$(database)/documents/admin_auth/$(request.auth.token.email.lower())).data.tenantId == tenantId &&
+           get(/databases/$(database)/documents/admin_auth/$(request.auth.token.email.lower())).data.status == 'active')
+        )
       );
     }
 
@@ -310,5 +318,14 @@ service cloud.firestore {
         (resource.data.tenantId != null && isTenantAdmin(resource.data.tenantId))
       );
     }
+
+    // --- 17. Admin Auth & Credentials Registry ---
+    // Read: Super Admin, or user checking their own admin record if authenticated
+    // Write: Super Admin only
+    match /admin_auth/{authId} {
+      allow read: if isSuperAdmin() || (isAuthenticated() && resource.data.email.lower() == request.auth.token.email.lower());
+      allow write: if isSuperAdmin();
+    }
   }
 }
+

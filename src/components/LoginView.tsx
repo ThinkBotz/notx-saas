@@ -22,7 +22,8 @@ import {
   X,
   ArrowRight,
   ExternalLink,
-  Mail
+  Mail,
+  ShieldCheck
 } from 'lucide-react';
 import { UserProfile, AppBranding, DEFAULT_BRANDING, Tenant, SUPER_ADMIN_EMAILS, DepartmentEvent, EventWinner } from '../types';
 import BrandLogo from './BrandLogo';
@@ -38,7 +39,8 @@ import {
   fetchEvents,
   subscribeToEventWinners,
   subscribeToPlatformBranding,
-  DEFAULT_PLATFORM_BRANDING
+  DEFAULT_PLATFORM_BRANDING,
+  fetchAdminAuthRecord
 } from '../firebase';
 import { GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, updatePassword } from 'firebase/auth';
 import { hashPassword, verifyPassword, recordUserActivity } from '../utils/auth';
@@ -77,6 +79,14 @@ export default function LoginView({
     });
     return () => unsub();
   }, []);
+
+  const [loginMode, setLoginMode] = useState<'student' | 'admin'>(() => {
+    const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+    return (urlParams?.get('mode') === 'admin' || urlParams?.get('admin') === 'true' || (typeof window !== 'undefined' && window.location.pathname.startsWith('/admin'))) ? 'admin' : 'student';
+  });
+  const [adminEmailInput, setAdminEmailInput] = useState('');
+  const [adminPasswordInput, setAdminPasswordInput] = useState('');
+  const [showAdminPassword, setShowAdminPassword] = useState(false);
 
   const [rollNumberInput, setRollNumberInput] = useState('');
   const [password, setPassword] = useState('');
@@ -333,6 +343,150 @@ export default function LoginView({
     }
   };
 
+  const handleAdminLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanEmail = adminEmailInput.trim().toLowerCase();
+    const cleanPass = adminPasswordInput;
+
+    if (!cleanEmail || !cleanPass) {
+      setError('Please enter both Admin Email and Password');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
+    try {
+      // 1. Check admin_auth record or tenant / superadmin authorization
+      const authRecord = await fetchAdminAuthRecord(cleanEmail);
+      const isSuper = (authRecord?.role === 'superadmin') || SUPER_ADMIN_EMAILS.some(e => e.toLowerCase() === cleanEmail);
+      let tenant = (authRecord?.tenantId ? tenants.find(t => t.tenantId === authRecord.tenantId) : null)
+        || await findTenantByAdminEmail(cleanEmail);
+
+      if (!isSuper && !tenant && !authRecord) {
+        setError(`No administrative account found for "${cleanEmail}".`);
+        setLoading(false);
+        return;
+      }
+
+      if (tenant && tenant.status === 'inactive') {
+        setError(`The association "${tenant.name}" has been deactivated by Super Admin.`);
+        setLoading(false);
+        return;
+      }
+
+      let authUserSuccess = false;
+      let authenticatedUid = '';
+
+      // Try Firebase Auth email+password sign-in
+      try {
+        const userCred = await signInWithEmailAndPassword(auth, cleanEmail, cleanPass);
+        authUserSuccess = true;
+        authenticatedUid = userCred.user.uid;
+      } catch (authErr: any) {
+        // If not in Firebase Auth or wrong password in Firebase Auth, check admin_auth hash
+        if (authRecord && authRecord.passwordHash) {
+          const verification = await verifyPassword(cleanPass, authRecord.passwordHash);
+          if (verification.isValid) {
+            authUserSuccess = true;
+            try {
+              const newCred = await createUserWithEmailAndPassword(auth, cleanEmail, cleanPass);
+              authenticatedUid = newCred.user.uid;
+            } catch (createErr: any) {
+              if (createErr?.code === 'auth/email-already-in-use') {
+                authenticatedUid = `admin_${cleanEmail.replace(/[^a-zA-Z0-9]/g, '_')}`;
+              }
+            }
+          } else {
+            setError('Invalid administrator password. Please verify your credentials.');
+            setLoading(false);
+            return;
+          }
+        } else {
+          if (authErr?.code === 'auth/wrong-password' || authErr?.code === 'auth/invalid-credential') {
+            setError('Invalid administrator credentials.');
+          } else if (authErr?.code === 'auth/user-not-found') {
+            setError('Admin account not found in Auth system. Please use Google SSO or request a password from Super Admin.');
+          } else {
+            setError(authErr?.message || 'Admin sign in failed.');
+          }
+          setLoading(false);
+          return;
+        }
+      }
+
+      if (!authUserSuccess) {
+        setError('Authentication failed. Please verify your credentials.');
+        setLoading(false);
+        return;
+      }
+
+      // Log in as Super Admin
+      if (isSuper) {
+        let superAdmin = allUsers.find(u => u.email.toLowerCase() === cleanEmail && u.isSuperAdmin);
+        if (!superAdmin) {
+          superAdmin = {
+            uid: authenticatedUid || `superadmin_${cleanEmail.replace(/[^a-zA-Z0-9]/g, '_')}`,
+            name: authRecord?.name || "Super Admin",
+            email: cleanEmail,
+            role: 'admin',
+            isSuperAdmin: true,
+            tenantId: '',
+            position: "Super Administrator",
+            department: "NotX Connect Administration",
+            responsibilities: "Platform control and tenant oversight",
+            created_at: new Date().toISOString()
+          };
+          await createUserProfile(superAdmin);
+          refreshUsers();
+        } else if (superAdmin.tenantId) {
+          superAdmin.tenantId = '';
+          updateUserProfile(superAdmin.uid, { tenantId: '' }).catch(console.warn);
+        }
+        recordUserActivity();
+        onLoginSuccess(superAdmin);
+        return;
+      }
+
+      // Log in as Tenant Admin
+      if (tenant) {
+        const cleanTid = tenant.tenantId.trim().toLowerCase();
+        let tenantAdmin = allUsers.find(u =>
+          (u.uid === authenticatedUid || u.email?.toLowerCase() === cleanEmail) &&
+          u.tenantId && u.tenantId.trim().toLowerCase() === cleanTid
+        );
+
+        if (!tenantAdmin) {
+          tenantAdmin = {
+            uid: authenticatedUid || `admin_${cleanTid}`,
+            name: authRecord?.name || `${tenant.shortCode} Admin`,
+            email: cleanEmail,
+            role: 'admin',
+            tenantId: tenant.tenantId,
+            position: "Department Administrator",
+            department: tenant.name,
+            responsibilities: `Administrative access for ${tenant.name}`,
+            created_at: new Date().toISOString()
+          };
+          await createUserProfile(tenantAdmin);
+          refreshUsers();
+        } else if (tenantAdmin.role !== 'admin') {
+          await updateUserProfile(tenantAdmin.uid, { role: 'admin' });
+          tenantAdmin.role = 'admin';
+          refreshUsers();
+        }
+        recordUserActivity();
+        onLoginSuccess(tenantAdmin);
+        return;
+      }
+    } catch (err: any) {
+      console.error('Admin login exception:', err);
+      setError(err?.message || 'An error occurred during admin sign in.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleGoogleLogin = async () => {
     setLoading(true);
     setError('');
@@ -347,14 +501,17 @@ export default function LoginView({
         return;
       }
 
+      // Look up admin_auth record if exists
+      const authRecord = await fetchAdminAuthRecord(googleEmail);
+
       // 1. Check Super Admin
-      const isSuper = SUPER_ADMIN_EMAILS.some(e => e.toLowerCase() === googleEmail);
+      const isSuper = (authRecord?.role === 'superadmin') || SUPER_ADMIN_EMAILS.some(e => e.toLowerCase() === googleEmail);
       if (isSuper) {
         let superAdmin = allUsers.find(u => u.email.toLowerCase() === googleEmail && u.isSuperAdmin);
         if (!superAdmin) {
           superAdmin = {
             uid: result.user.uid,
-            name: result.user.displayName || "Super Admin",
+            name: authRecord?.name || result.user.displayName || "Super Admin",
             email: googleEmail,
             googleEmail: googleEmail,
             role: 'admin',
@@ -379,7 +536,9 @@ export default function LoginView({
       }
 
       // 2. Check if this is an authorized Tenant Admin for any department
-      const tenant = await findTenantByAdminEmail(googleEmail);
+      let tenant = (authRecord?.tenantId ? tenants.find(t => t.tenantId === authRecord.tenantId) : null)
+        || await findTenantByAdminEmail(googleEmail);
+
       if (tenant) {
         if (tenant.status === 'inactive') {
           setError(`The association "${tenant.name}" has been deactivated by Super Admin.`);
@@ -408,7 +567,7 @@ export default function LoginView({
 
           tenantAdmin = {
             uid: result.user.uid,
-            name: result.user.displayName || placeholderAdmin?.name || `${tenant.shortCode} Admin`,
+            name: result.user.displayName || authRecord?.name || placeholderAdmin?.name || `${tenant.shortCode} Admin`,
             email: googleEmail,
             googleEmail: googleEmail,
             role: 'admin',
@@ -546,22 +705,52 @@ export default function LoginView({
       <div className="pb-3 border-b-[2.5px] border-[var(--nb-ink)]">
         <div className="flex items-center justify-between gap-2">
           <h2 className="nb-headline text-2xl sm:text-3xl tracking-tight text-[var(--nb-content)]">
-            SIGN IN
+            {loginMode === 'admin' ? 'ADMIN PORTAL' : 'SIGN IN'}
           </h2>
           <span
             className="font-mono font-bold text-[11px] sm:text-xs uppercase px-2.5 py-1 rounded-md border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)] flex items-center gap-1.5 flex-shrink-0"
             style={{
-              background: currentTheme.accent,
-              color: currentTheme.accentFg
+              background: loginMode === 'admin' ? '#F59E0B' : currentTheme.accent,
+              color: loginMode === 'admin' ? '#171717' : currentTheme.accentFg
             }}
           >
             <span className="w-2 h-2 rounded-full border border-[var(--nb-ink)] bg-[var(--nb-surface)]" />
-            {selectedTenant?.shortCode || 'NOTX'}
+            {loginMode === 'admin' ? 'ADMIN ACCESS' : (selectedTenant?.shortCode || 'NOTX')}
           </span>
         </div>
         <p className="font-mono text-[10px] sm:text-[11px] font-bold tracking-wider text-[var(--nb-secondary)] uppercase mt-1">
-          Select your department tenant and enter your credentials
+          {loginMode === 'admin'
+            ? 'Dual-auth gateway for department administrators & super administrators'
+            : 'Select your department tenant and enter your credentials'}
         </p>
+      </div>
+
+      {/* Portal Mode Toggle: Student vs Admin */}
+      <div className="grid grid-cols-2 gap-1.5 p-1 mt-3.5 bg-[var(--nb-surface-accent)] rounded-lg border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)]">
+        <button
+          type="button"
+          onClick={() => { setLoginMode('student'); setError(''); }}
+          className={`py-2 px-3 rounded-md font-mono text-xs font-bold uppercase transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+            loginMode === 'student'
+              ? 'bg-[var(--nb-surface)] text-[var(--nb-ink)] border border-[var(--nb-ink)] shadow-[1.5px_1.5px_0_var(--nb-ink)] font-extrabold'
+              : 'text-[var(--nb-secondary)] hover:text-[var(--nb-content)]'
+          }`}
+        >
+          <User className="w-3.5 h-3.5" />
+          Student Portal
+        </button>
+        <button
+          type="button"
+          onClick={() => { setLoginMode('admin'); setError(''); }}
+          className={`py-2 px-3 rounded-md font-mono text-xs font-bold uppercase transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+            loginMode === 'admin'
+              ? 'bg-amber-400 text-neutral-900 border border-[var(--nb-ink)] shadow-[1.5px_1.5px_0_var(--nb-ink)] font-extrabold'
+              : 'text-[var(--nb-secondary)] hover:text-[var(--nb-content)]'
+          }`}
+        >
+          <ShieldCheck className="w-3.5 h-3.5 text-neutral-900" />
+          Admin Portal
+        </button>
       </div>
 
       {/* Error banner */}
@@ -572,164 +761,278 @@ export default function LoginView({
         </div>
       )}
 
-      {/* Login form */}
-      <form onSubmit={handleLogin} className="space-y-4 mt-4">
-        {/* 1. Tenant Selector */}
-        <div>
-          <label className="block mb-1.5 flex items-center justify-between text-[11px] font-mono font-bold uppercase tracking-wider text-[var(--nb-content)]">
-            <span className="flex items-center gap-1.5">
-              <Building2 className="w-3.5 h-3.5" />
-              SELECT ASSOCIATION / TENANT
+      {loginMode === 'admin' ? (
+        /* Dedicated Admin Portal Dual-Auth Form */
+        <form onSubmit={handleAdminLogin} className="space-y-4 mt-4">
+          {/* 1. Admin Email */}
+          <div>
+            <label className="block mb-1.5 flex items-center justify-between text-[11px] font-mono font-bold uppercase tracking-wider text-[var(--nb-content)]">
+              <span className="flex items-center gap-1.5">
+                <Mail className="w-3.5 h-3.5" />
+                ADMIN EMAIL
+              </span>
+              <span className="text-[9px] font-mono font-bold text-[var(--nb-secondary)] tracking-wider">
+                SUPER OR DEPT ADMIN
+              </span>
+            </label>
+            <div className="relative">
+              <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--nb-content)] pointer-events-none" />
+              <input
+                type="email"
+                value={adminEmailInput}
+                onChange={(e) => setAdminEmailInput(e.target.value)}
+                placeholder="admin@college.edu or superadmin@notx.com"
+                className="w-full min-h-[46px] pl-10 pr-4 font-mono font-bold text-base sm:text-xs md:text-sm rounded-lg border-[2px] border-[var(--nb-ink)] bg-[var(--nb-surface)] text-[var(--nb-content)] shadow-[2.5px_2.5px_0_var(--nb-ink)] focus:shadow-[4px_4px_0_var(--nb-ink)] focus:translate-x-[-1px] focus:translate-y-[-1px] focus:outline-none transition-all placeholder:font-sans placeholder:text-neutral-400"
+                autoComplete="email"
+                required
+              />
+            </div>
+          </div>
+
+          {/* 2. Admin Password */}
+          <div>
+            <label className="block mb-1.5 flex items-center justify-between text-[11px] font-mono font-bold uppercase tracking-wider text-[var(--nb-content)]">
+              <span className="flex items-center gap-1.5">
+                <Lock className="w-3.5 h-3.5" />
+                ADMIN PORTAL PASSWORD
+              </span>
+              <span className="text-[9px] font-mono font-bold text-[var(--nb-secondary)] tracking-wider">
+                ASSIGNED PASSWORD
+              </span>
+            </label>
+            <div className="relative">
+              <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--nb-content)] pointer-events-none" />
+              <input
+                type={showAdminPassword ? 'text' : 'password'}
+                value={adminPasswordInput}
+                onChange={(e) => setAdminPasswordInput(e.target.value)}
+                placeholder="••••••••"
+                className="w-full min-h-[46px] pl-10 pr-12 text-base sm:text-xs md:text-sm rounded-lg border-[2px] border-[var(--nb-ink)] bg-[var(--nb-surface)] text-[var(--nb-content)] shadow-[2.5px_2.5px_0_var(--nb-ink)] focus:shadow-[4px_4px_0_var(--nb-ink)] focus:translate-x-[-1px] focus:translate-y-[-1px] focus:outline-none transition-all placeholder:text-neutral-400"
+                autoComplete="current-password"
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowAdminPassword(!showAdminPassword)}
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1.5 cursor-pointer text-[var(--nb-content)] hover:text-[var(--nb-ink)]"
+                aria-label={showAdminPassword ? 'Hide password' : 'Show password'}
+              >
+                {showAdminPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+
+          {/* Admin Submit Button */}
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full mt-3 py-3.5 px-4 rounded-lg font-mono font-extrabold text-xs sm:text-sm uppercase tracking-wider border-[2.5px] border-[var(--nb-ink)] shadow-[4px_4px_0_var(--nb-ink)] hover:shadow-[5.5px_5.5px_0_var(--nb-ink)] hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-1 active:translate-y-1 active:shadow-none transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 bg-amber-400 text-neutral-950"
+          >
+            {loading ? (
+              <span className="w-5 h-5 rounded-full border-2 border-current border-t-transparent animate-spin" />
+            ) : (
+              <>
+                <ShieldCheck className="w-4 h-4" />
+                SIGN IN AS ADMINISTRATOR
+              </>
+            )}
+          </button>
+
+          {/* Admin Info Card */}
+          <div
+            className="p-3 sm:p-3.5 rounded-lg border-[2px] border-[var(--nb-ink)] shadow-[2.5px_2.5px_0_var(--nb-ink)] text-xs font-semibold leading-relaxed flex items-center gap-2.5 bg-amber-500/10 text-[var(--nb-content)]"
+          >
+            <ShieldCheck className="w-4 h-4 text-amber-500 flex-shrink-0" />
+            <p className="flex-1 text-[11px] leading-snug">
+              Protected credential verification. Superadmins manage administrative access in the Super Admin Console.
+            </p>
+          </div>
+
+          {/* Neo-Brutalist Divider */}
+          <div className="flex items-center gap-3 my-4">
+            <div className="flex-1 h-[2px] bg-[var(--nb-ink)] opacity-25" />
+            <span className="font-mono font-bold text-[10px] uppercase px-2.5 py-1 bg-[var(--nb-surface-accent)] text-[var(--nb-content)] rounded border border-[var(--nb-ink)] shadow-[1.5px_1.5px_0_var(--nb-ink)]">
+              OR DUAL-AUTH WITH GOOGLE SSO
             </span>
-          </label>
-          <div className="relative">
-            <Building2 className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--nb-content)] pointer-events-none" />
-            <select
-              value={selectedTenantId}
-              onChange={(e) => handleTenantChange(e.target.value)}
-              className="w-full min-h-[46px] pl-10 pr-10 font-bold font-sans text-xs sm:text-sm rounded-lg border-[2px] border-[var(--nb-ink)] bg-[var(--nb-surface)] text-[var(--nb-content)] shadow-[2.5px_2.5px_0_var(--nb-ink)] focus:shadow-[4px_4px_0_var(--nb-ink)] focus:translate-x-[-1px] focus:translate-y-[-1px] focus:outline-none transition-all cursor-pointer appearance-none"
-            >
-              {tenants.filter(t => t.status === 'active').length === 0 ? (
-                <option value="">NOTX</option>
-              ) : (
-                tenants.filter(t => t.status === 'active').map(t => (
-                  <option key={t.tenantId} value={t.tenantId}>
-                    {t.name} ({t.shortCode || t.tenantId})
-                  </option>
-                ))
-              )}
-            </select>
-            <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none text-[var(--nb-content)]" />
+            <div className="flex-1 h-[2px] bg-[var(--nb-ink)] opacity-25" />
           </div>
-        </div>
 
-        {/* 2. Roll Number */}
-        <div>
-          <label className="block mb-1.5 flex items-center justify-between text-[11px] font-mono font-bold uppercase tracking-wider text-[var(--nb-content)]">
-            <span>ROLL NUMBER</span>
-            <span className="text-[9px] font-mono font-bold text-[var(--nb-secondary)] tracking-wider">
-              E.G. 23HM1A3354
+          {/* Google SSO Button for Admins */}
+          <button
+            type="button"
+            onClick={handleGoogleLogin}
+            disabled={loading}
+            className="w-full flex items-center justify-center gap-2.5 py-3 px-4 rounded-lg font-mono font-bold text-xs uppercase tracking-wider bg-[var(--nb-surface)] text-[var(--nb-content)] border-[2.5px] border-[var(--nb-ink)] shadow-[3.5px_3.5px_0_var(--nb-ink)] hover:shadow-[5px_5px_0_var(--nb-ink)] hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-1 active:translate-y-1 active:shadow-none transition-all cursor-pointer"
+          >
+            <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+              <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+              <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
+              <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+            </svg>
+            <span>CONTINUE WITH GOOGLE (ADMIN SSO)</span>
+          </button>
+        </form>
+      ) : (
+        /* Student Login form */
+        <form onSubmit={handleLogin} className="space-y-4 mt-4">
+          {/* 1. Tenant Selector */}
+          <div>
+            <label className="block mb-1.5 flex items-center justify-between text-[11px] font-mono font-bold uppercase tracking-wider text-[var(--nb-content)]">
+              <span className="flex items-center gap-1.5">
+                <Building2 className="w-3.5 h-3.5" />
+                SELECT ASSOCIATION / TENANT
+              </span>
+            </label>
+            <div className="relative">
+              <Building2 className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--nb-content)] pointer-events-none" />
+              <select
+                value={selectedTenantId}
+                onChange={(e) => handleTenantChange(e.target.value)}
+                className="w-full min-h-[46px] pl-10 pr-10 font-bold font-sans text-xs sm:text-sm rounded-lg border-[2px] border-[var(--nb-ink)] bg-[var(--nb-surface)] text-[var(--nb-content)] shadow-[2.5px_2.5px_0_var(--nb-ink)] focus:shadow-[4px_4px_0_var(--nb-ink)] focus:translate-x-[-1px] focus:translate-y-[-1px] focus:outline-none transition-all cursor-pointer appearance-none"
+              >
+                {tenants.filter(t => t.status === 'active').length === 0 ? (
+                  <option value="">NOTX</option>
+                ) : (
+                  tenants.filter(t => t.status === 'active').map(t => (
+                    <option key={t.tenantId} value={t.tenantId}>
+                      {t.name} ({t.shortCode || t.tenantId})
+                    </option>
+                  ))
+                )}
+              </select>
+              <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none text-[var(--nb-content)]" />
+            </div>
+          </div>
+
+          {/* 2. Roll Number */}
+          <div>
+            <label className="block mb-1.5 flex items-center justify-between text-[11px] font-mono font-bold uppercase tracking-wider text-[var(--nb-content)]">
+              <span>ROLL NUMBER</span>
+              <span className="text-[9px] font-mono font-bold text-[var(--nb-secondary)] tracking-wider">
+                E.G. 23HM1A3354
+              </span>
+            </label>
+            <div className="relative">
+              <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--nb-content)] pointer-events-none" />
+              <input
+                type="text"
+                value={rollNumberInput}
+                onChange={(e) => setRollNumberInput(e.target.value.toUpperCase())}
+                placeholder="e.g. 23HM1A3354"
+                className="w-full min-h-[46px] pl-10 pr-4 font-mono font-bold text-base sm:text-xs md:text-sm rounded-lg border-[2px] border-[var(--nb-ink)] bg-[var(--nb-surface)] text-[var(--nb-content)] shadow-[2.5px_2.5px_0_var(--nb-ink)] focus:shadow-[4px_4px_0_var(--nb-ink)] focus:translate-x-[-1px] focus:translate-y-[-1px] focus:outline-none transition-all uppercase placeholder:normal-case placeholder:font-sans placeholder:text-neutral-400"
+                autoComplete="username"
+              />
+            </div>
+          </div>
+
+          {/* 3. Password */}
+          <div>
+            <label className="block mb-1.5 flex items-center justify-between text-[11px] font-mono font-bold uppercase tracking-wider text-[var(--nb-content)]">
+              <span>PASSWORD</span>
+              <span className="text-[9px] font-mono font-bold text-[var(--nb-secondary)] tracking-wider">
+                DEFAULT = ROLL OR TEMP PASS
+              </span>
+            </label>
+            <div className="relative">
+              <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--nb-content)] pointer-events-none" />
+              <input
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full min-h-[46px] pl-10 pr-12 text-base sm:text-xs md:text-sm rounded-lg border-[2px] border-[var(--nb-ink)] bg-[var(--nb-surface)] text-[var(--nb-content)] shadow-[2.5px_2.5px_0_var(--nb-ink)] focus:shadow-[4px_4px_0_var(--nb-ink)] focus:translate-x-[-1px] focus:translate-y-[-1px] focus:outline-none transition-all placeholder:text-neutral-400"
+                autoComplete="current-password"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1.5 cursor-pointer text-[var(--nb-content)] hover:text-[var(--nb-ink)]"
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+            <div className="flex justify-end mt-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setForgotRoll(rollNumberInput);
+                  setForgotMsg('');
+                  setForgotErr('');
+                  setShowForgotModal(true);
+                }}
+                className="text-[11px] font-mono font-bold text-[var(--nb-secondary)] hover:text-[var(--nb-content)] hover:underline cursor-pointer"
+              >
+                Forgot / Reset Password?
+              </button>
+            </div>
+          </div>
+
+          {/* Primary Submit Button */}
+          <button
+            type="submit"
+            disabled={loading || !selectedTenantId}
+            className="w-full mt-3 py-3.5 px-4 rounded-lg font-mono font-extrabold text-xs sm:text-sm uppercase tracking-wider border-[2.5px] border-[var(--nb-ink)] shadow-[4px_4px_0_var(--nb-ink)] hover:shadow-[5.5px_5.5px_0_var(--nb-ink)] hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-1 active:translate-y-1 active:shadow-none transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+            style={{
+              background: currentTheme.accent,
+              color: currentTheme.accentFg
+            }}
+          >
+            {loading ? (
+              <span className="w-5 h-5 rounded-full border-2 border-current border-t-transparent animate-spin" />
+            ) : (
+              <>
+                <KeyRound className="w-4 h-4" />
+                SIGN IN TO {selectedTenant?.shortCode || 'PORTAL'}
+              </>
+            )}
+          </button>
+
+          {/* Info Sticker Note */}
+          <div
+            className="p-3 sm:p-3.5 rounded-lg border-[2px] border-[var(--nb-ink)] shadow-[2.5px_2.5px_0_var(--nb-ink)] text-xs font-semibold leading-relaxed flex items-center gap-2.5"
+            style={{
+              background: currentTheme.subtleBg,
+              color: 'var(--nb-content)'
+            }}
+          >
+            <div className="w-2.5 h-2.5 rounded-full border border-[var(--nb-ink)] bg-amber-400 flex-shrink-0" />
+            <p className="flex-1">
+              Default password is your <strong>Roll Number</strong> or temporary password <strong>notx@123</strong>.
+            </p>
+          </div>
+
+          {/* Neo-Brutalist Divider */}
+          <div className="flex items-center gap-3 my-4">
+            <div className="flex-1 h-[2px] bg-[var(--nb-ink)] opacity-25" />
+            <span className="font-mono font-bold text-[10px] uppercase px-2.5 py-1 bg-[var(--nb-surface-accent)] text-[var(--nb-content)] rounded border border-[var(--nb-ink)] shadow-[1.5px_1.5px_0_var(--nb-ink)]">
+              LINKED GOOGLE SIGN-IN
             </span>
-          </label>
-          <div className="relative">
-            <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--nb-content)] pointer-events-none" />
-            <input
-              type="text"
-              value={rollNumberInput}
-              onChange={(e) => setRollNumberInput(e.target.value.toUpperCase())}
-              placeholder="e.g. 23HM1A3354"
-              className="w-full min-h-[46px] pl-10 pr-4 font-mono font-bold text-base sm:text-xs md:text-sm rounded-lg border-[2px] border-[var(--nb-ink)] bg-[var(--nb-surface)] text-[var(--nb-content)] shadow-[2.5px_2.5px_0_var(--nb-ink)] focus:shadow-[4px_4px_0_var(--nb-ink)] focus:translate-x-[-1px] focus:translate-y-[-1px] focus:outline-none transition-all uppercase placeholder:normal-case placeholder:font-sans placeholder:text-neutral-400"
-              autoComplete="username"
-            />
+            <div className="flex-1 h-[2px] bg-[var(--nb-ink)] opacity-25" />
           </div>
-        </div>
 
-        {/* 3. Password */}
-        <div>
-          <label className="block mb-1.5 flex items-center justify-between text-[11px] font-mono font-bold uppercase tracking-wider text-[var(--nb-content)]">
-            <span>PASSWORD</span>
-            <span className="text-[9px] font-mono font-bold text-[var(--nb-secondary)] tracking-wider">
-              DEFAULT = ROLL OR TEMP PASS
-            </span>
-          </label>
-          <div className="relative">
-            <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--nb-content)] pointer-events-none" />
-            <input
-              type={showPassword ? 'text' : 'password'}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              className="w-full min-h-[46px] pl-10 pr-12 text-base sm:text-xs md:text-sm rounded-lg border-[2px] border-[var(--nb-ink)] bg-[var(--nb-surface)] text-[var(--nb-content)] shadow-[2.5px_2.5px_0_var(--nb-ink)] focus:shadow-[4px_4px_0_var(--nb-ink)] focus:translate-x-[-1px] focus:translate-y-[-1px] focus:outline-none transition-all placeholder:text-neutral-400"
-              autoComplete="current-password"
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1.5 cursor-pointer text-[var(--nb-content)] hover:text-[var(--nb-ink)]"
-              aria-label={showPassword ? 'Hide password' : 'Show password'}
-            >
-              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-            </button>
-          </div>
-          <div className="flex justify-end mt-1.5">
-            <button
-              type="button"
-              onClick={() => {
-                setForgotRoll(rollNumberInput);
-                setForgotMsg('');
-                setForgotErr('');
-                setShowForgotModal(true);
-              }}
-              className="text-[11px] font-mono font-bold text-[var(--nb-secondary)] hover:text-[var(--nb-content)] hover:underline cursor-pointer"
-            >
-              Forgot / Reset Password?
-            </button>
-          </div>
-        </div>
+          {/* Google Sign-in */}
+          <button
+            type="button"
+            onClick={handleGoogleLogin}
+            disabled={loading}
+            className="w-full flex items-center justify-center gap-2.5 py-3 px-4 rounded-lg font-mono font-bold text-xs uppercase tracking-wider bg-[var(--nb-surface)] text-[var(--nb-content)] border-[2.5px] border-[var(--nb-ink)] shadow-[3.5px_3.5px_0_var(--nb-ink)] hover:shadow-[5px_5px_0_var(--nb-ink)] hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-1 active:translate-y-1 active:shadow-none transition-all cursor-pointer"
+          >
+            <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+              <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+              <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
+              <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+            </svg>
+            <span>CONTINUE WITH GOOGLE</span>
+          </button>
 
-        {/* Primary Submit Button */}
-        <button
-          type="submit"
-          disabled={loading || !selectedTenantId}
-          className="w-full mt-3 py-3.5 px-4 rounded-lg font-mono font-extrabold text-xs sm:text-sm uppercase tracking-wider border-[2.5px] border-[var(--nb-ink)] shadow-[4px_4px_0_var(--nb-ink)] hover:shadow-[5.5px_5.5px_0_var(--nb-ink)] hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-1 active:translate-y-1 active:shadow-none transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-          style={{
-            background: currentTheme.accent,
-            color: currentTheme.accentFg
-          }}
-        >
-          {loading ? (
-            <span className="w-5 h-5 rounded-full border-2 border-current border-t-transparent animate-spin" />
-          ) : (
-            <>
-              <KeyRound className="w-4 h-4" />
-              SIGN IN TO {selectedTenant?.shortCode || 'PORTAL'}
-            </>
-          )}
-        </button>
-
-        {/* Info Sticker Note */}
-        <div
-          className="p-3 sm:p-3.5 rounded-lg border-[2px] border-[var(--nb-ink)] shadow-[2.5px_2.5px_0_var(--nb-ink)] text-xs font-semibold leading-relaxed flex items-center gap-2.5"
-          style={{
-            background: currentTheme.subtleBg,
-            color: 'var(--nb-content)'
-          }}
-        >
-          <div className="w-2.5 h-2.5 rounded-full border border-[var(--nb-ink)] bg-amber-400 flex-shrink-0" />
-          <p className="flex-1">
-            Default password is your <strong>Roll Number</strong> or temporary password <strong>notx@123</strong>.
+          <p className="text-[10px] text-center font-mono font-medium text-[var(--nb-secondary)] leading-relaxed pt-1">
+            Students must link Google in Profile settings before using Google SSO.
           </p>
-        </div>
-
-        {/* Neo-Brutalist Divider */}
-        <div className="flex items-center gap-3 my-4">
-          <div className="flex-1 h-[2px] bg-[var(--nb-ink)] opacity-25" />
-          <span className="font-mono font-bold text-[10px] uppercase px-2.5 py-1 bg-[var(--nb-surface-accent)] text-[var(--nb-content)] rounded border border-[var(--nb-ink)] shadow-[1.5px_1.5px_0_var(--nb-ink)]">
-            ADMIN & LINKED GOOGLE SIGN-IN
-          </span>
-          <div className="flex-1 h-[2px] bg-[var(--nb-ink)] opacity-25" />
-        </div>
-
-        {/* Google Sign-in */}
-        <button
-          type="button"
-          onClick={handleGoogleLogin}
-          disabled={loading}
-          className="w-full flex items-center justify-center gap-2.5 py-3 px-4 rounded-lg font-mono font-bold text-xs uppercase tracking-wider bg-[var(--nb-surface)] text-[var(--nb-content)] border-[2.5px] border-[var(--nb-ink)] shadow-[3.5px_3.5px_0_var(--nb-ink)] hover:shadow-[5px_5px_0_var(--nb-ink)] hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-1 active:translate-y-1 active:shadow-none transition-all cursor-pointer"
-        >
-          <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
-            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
-            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
-            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
-          </svg>
-          <span>CONTINUE WITH GOOGLE</span>
-        </button>
-
-        <p className="text-[10px] text-center font-mono font-medium text-[var(--nb-secondary)] leading-relaxed pt-1">
-          Auto-detects Super Admin / Tenant Admin. Students must link Google in Profile first.
-        </p>
-      </form>
+        </form>
+      )}
 
       {/* Forgot / Reset Password Modal */}
       {showForgotModal && (
@@ -1156,11 +1459,21 @@ export default function LoginView({
             </div>
           </div>
 
-          {/* Right: The ONLY Access / Sign In Button on Desktop */}
-          <div className="flex items-center gap-3">
+          {/* Right: Access & Admin Portal Buttons on Desktop */}
+          <div className="flex items-center gap-2.5">
             <button
               type="button"
-              onClick={() => setIsLoginModalOpen(true)}
+              onClick={() => { setLoginMode('admin'); setIsLoginModalOpen(true); }}
+              className="px-3.5 py-2.5 rounded-lg font-mono font-bold text-xs uppercase tracking-wider border-2 border-[var(--nb-ink)] shadow-[2.5px_2.5px_0_var(--nb-ink)] hover:shadow-[4px_4px_0_var(--nb-ink)] hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-1 active:translate-y-1 active:shadow-none transition-all flex items-center gap-1.5 cursor-pointer bg-amber-400 text-neutral-950"
+              title="Dedicated Administrator Portal"
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span>Admin Portal</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => { setLoginMode('student'); setIsLoginModalOpen(true); }}
               className="px-5 py-2.5 rounded-lg font-mono font-extrabold text-xs uppercase tracking-wider border-2 border-[var(--nb-ink)] shadow-[3px_3px_0_var(--nb-ink)] hover:shadow-[4.5px_4.5px_0_var(--nb-ink)] hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-1 active:translate-y-1 active:shadow-none transition-all flex items-center gap-2 cursor-pointer"
               style={{
                 background: currentTheme.accent,
