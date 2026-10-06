@@ -4,33 +4,19 @@
  * and 24-hour inactivity session management.
  */
 
+import { sha256 } from 'js-sha256';
+
 const PASSWORD_SALT = 'notx_salt_v1:';
 export const SESSION_TIMEOUT_MS = 24 * 60 * 60 * 1000; // 24 hours
 export const SESSION_ACTIVITY_KEY = 'notx_last_activity';
 
 /**
- * Hash a password using SHA-256 with a system salt via Web Crypto API.
+ * Hash a password using salted SHA-256 (deterministic across desktop, mobile HTTP/HTTPS, Node).
  */
 export async function hashPassword(password: string): Promise<string> {
   const trimmed = password.trim();
   if (!trimmed) return '';
-  
-  if (typeof crypto !== 'undefined' && crypto.subtle) {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(`${PASSWORD_SALT}${trimmed}`);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-  }
-  
-  // Fallback for non-crypto environments (should not happen in modern browser)
-  let hash = 0;
-  const str = `${PASSWORD_SALT}${trimmed}`;
-  for (let i = 0; i < str.length; i++) {
-    hash = (hash << 5) - hash + str.charCodeAt(i);
-    hash |= 0;
-  }
-  return Math.abs(hash).toString(16).padStart(64, '0');
+  return sha256(`${PASSWORD_SALT}${trimmed}`);
 }
 
 /**
