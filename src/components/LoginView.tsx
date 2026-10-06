@@ -1376,13 +1376,13 @@ export default function LoginView({
           </div>
 
           {/* Mobile Dedicated Animated Crowd Runway */}
-          <div className="relative w-[calc(100%+2.5rem)] -mx-5 -mb-5 mt-5 h-[115px] pointer-events-none overflow-hidden border-t-2 border-[var(--nb-ink)]/20 bg-black/10">
+          <div className="relative w-[calc(100%+2.5rem)] -mx-5 -mb-5 mt-5 h-[120px] pointer-events-none overflow-hidden border-t-2 border-[var(--nb-ink)]/20">
             <div className="absolute inset-0">
               <CrowdCanvas
                 src="/images/peeps/all-peeps.png"
                 rows={15}
                 cols={7}
-                className="w-full h-full opacity-60"
+                className="w-full h-full opacity-100"
               />
             </div>
             {/* Subtle floor guideline */}
@@ -1491,29 +1491,29 @@ export default function LoginView({
           className="relative px-8 lg:px-14 pt-16 lg:pt-24 pb-36 lg:pb-44 min-h-[580px] lg:min-h-[640px] xl:min-h-[680px] border-b-[2.5px] border-[var(--nb-ink)] flex-shrink-0 overflow-hidden flex items-start"
           style={{ background: currentTheme.heroBg, color: currentTheme.heroFg }}
         >
-          {/* Animated Skiper-UI Crowd Canvas (bottom strip overlay) */}
-          <div className="absolute bottom-0 left-0 right-0 h-[170px] lg:h-[210px] pointer-events-none z-0 overflow-hidden translate-y-2 opacity-50">
-            <CrowdCanvas
-              src="/images/peeps/all-peeps.png"
-              rows={15}
-              cols={7}
-              className="w-full h-full"
-            />
-          </div>
-
-          {/* Dot Matrix Pattern */}
+          {/* Dot Matrix Pattern (Placed behind crowd so dots do not speckle through characters) */}
           <div
-            className="absolute inset-0 pointer-events-none opacity-10"
+            className="absolute inset-0 pointer-events-none opacity-10 z-0"
             style={{
               backgroundImage: 'radial-gradient(circle, currentColor 1.5px, transparent 1.5px)',
               backgroundSize: '22px 22px'
             }}
           />
 
-          {/* Subtle Ground Baseline */}
-          <div className="absolute bottom-0 left-0 right-0 h-[2.5px] bg-[var(--nb-ink)]/25 pointer-events-none" />
+          {/* Animated Skiper-UI Crowd Canvas (Full opacity, crisp black-and-white characters) */}
+          <div className="absolute bottom-0 left-0 right-0 h-[230px] lg:h-[280px] xl:h-[320px] pointer-events-none z-10 overflow-hidden">
+            <CrowdCanvas
+              src="/images/peeps/all-peeps.png"
+              rows={15}
+              cols={7}
+              className="w-full h-full opacity-100"
+            />
+          </div>
 
-          <div className="relative z-10 max-w-7xl w-full mx-auto flex flex-col md:flex-row items-center justify-between gap-8 pt-4 pb-12 lg:pb-16">
+          {/* Subtle Ground Baseline */}
+          <div className="absolute bottom-0 left-0 right-0 h-[2.5px] bg-[var(--nb-ink)]/25 pointer-events-none z-10" />
+
+          <div className="relative z-20 max-w-7xl w-full mx-auto flex flex-col md:flex-row items-center justify-between gap-8 pt-4 pb-12 lg:pb-16">
 
             {/* Left: Department Titles & Highlights */}
             <div className="flex-1 space-y-3">
