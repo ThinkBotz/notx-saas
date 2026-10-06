@@ -84,9 +84,18 @@ export const TenantLayout: React.FC<TenantLayoutProps> = ({
     return () => unsub();
   }, [currentUser?.uid, activeTenantId]);
 
+  const [clearedIds, setClearedIds] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem(`notx_cleared_notifs_${currentUser?.uid || 'guest'}`);
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+
   const unreadCount = useMemo(() => {
-    return notifications.filter(n => !n.read).length;
-  }, [notifications]);
+    return notifications.filter(n => !n.read && !clearedIds.has(n.id)).length;
+  }, [notifications, clearedIds]);
 
   return (
     <div className="h-full w-full flex flex-col bg-[var(--nb-bg)] text-[var(--nb-content)] overflow-hidden">
@@ -220,6 +229,7 @@ export const TenantLayout: React.FC<TenantLayoutProps> = ({
         notifications={notifications}
         currentUserId={currentUser?.uid || ''}
         activeTenantId={activeTenantId || ''}
+        onClearedIdsChange={setClearedIds}
       />
     </div>
   );

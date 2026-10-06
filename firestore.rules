@@ -289,5 +289,26 @@ service cloud.firestore {
         resource.data.tenantId != null && isTenantAdmin(resource.data.tenantId)
       );
     }
+
+    // --- 16. In-App Notifications Collection ---
+    // Read: Authenticated recipient, broadcast, or Admin
+    // Create: Authenticated users/system
+    // Update: Recipient or Admin (e.g. mark read)
+    // Delete: Direct recipient owner, Super Admin, or Tenant Admin
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.userId == 'all' ||
+        isSuperAdmin() ||
+        (resource.data.tenantId != null && isTenantAdmin(resource.data.tenantId))
+      );
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid ||
+        isSuperAdmin() ||
+        (resource.data.tenantId != null && isTenantAdmin(resource.data.tenantId))
+      );
+    }
   }
 }

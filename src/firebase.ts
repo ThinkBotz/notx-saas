@@ -3398,4 +3398,27 @@ export async function markAllNotificationsAsRead(notificationIds: string[]): Pro
   }
 }
 
+export async function deleteAppNotification(notificationId: string): Promise<void> {
+  try {
+    const docRef = doc(db, 'notifications', notificationId);
+    await deleteDoc(docRef);
+  } catch (err) {
+    console.error('Failed to delete notification:', err);
+  }
+}
+
+export async function deleteMultipleNotifications(notificationIds: string[]): Promise<void> {
+  try {
+    const batch = writeBatch(db);
+    notificationIds.forEach(id => {
+      const docRef = doc(db, 'notifications', id);
+      batch.delete(docRef);
+    });
+    await batch.commit();
+  } catch (err) {
+    console.error('Failed to batch delete notifications:', err);
+  }
+}
+
+
 

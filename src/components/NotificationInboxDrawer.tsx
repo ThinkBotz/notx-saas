@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Bell, 
   X, 
@@ -12,11 +12,18 @@ import {
   Info, 
   ArrowRight,
   ShieldAlert,
-  Volume2
+  Volume2,
+  Trash2
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { AppNotification } from '../types';
-import { markNotificationAsRead, markAllNotificationsAsRead, requestNotificationPermission } from '../firebase';
+import { 
+  markNotificationAsRead, 
+  markAllNotificationsAsRead, 
+  requestNotificationPermission,
+  deleteAppNotification,
+  deleteMultipleNotifications
+} from '../firebase';
 
 interface NotificationInboxDrawerProps {
   isOpen: boolean;
@@ -24,6 +31,7 @@ interface NotificationInboxDrawerProps {
   notifications: AppNotification[];
   currentUserId: string;
   activeTenantId?: string;
+  onClearedIdsChange?: (ids: Set<string>) => void;
 }
 
 export const NotificationInboxDrawer: React.FC<NotificationInboxDrawerProps> = ({
@@ -31,17 +39,53 @@ export const NotificationInboxDrawer: React.FC<NotificationInboxDrawerProps> = (
   onClose,
   notifications,
   currentUserId,
-  activeTenantId
+  activeTenantId,
+  onClearedIdsChange
 }) => {
   const navigate = useNavigate();
   const [filter, setFilter] = useState<'all' | 'unread' | 'important'>('all');
   const [isRequestingPerm, setIsRequestingPerm] = useState(false);
 
+  // Cleared/Dismissed notification IDs per user (persisted in localStorage)
+  const storageKey = `notx_cleared_notifs_${currentUserId || 'guest'}`;
+  const [clearedIds, setClearedIds] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem(storageKey);
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+
+  // Keep storage in sync when current user changes
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(storageKey);
+      const nextSet = saved ? new Set<string>(JSON.parse(saved)) : new Set<string>();
+      setClearedIds(nextSet);
+      onClearedIdsChange?.(nextSet);
+    } catch {
+      setClearedIds(new Set());
+    }
+  }, [currentUserId]);
+
+  const saveClearedIds = (updatedSet: Set<string>) => {
+    setClearedIds(updatedSet);
+    onClearedIdsChange?.(updatedSet);
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(Array.from(updatedSet)));
+    } catch (e) {
+      console.warn('Failed to save cleared notifications:', e);
+    }
+  };
+
   if (!isOpen) return null;
 
-  const unreadCount = notifications.filter(n => !n.read).length;
+  // Active notifications excluding any cleared by the user
+  const activeNotifications = notifications.filter(n => !clearedIds.has(n.id));
+  const unreadCount = activeNotifications.filter(n => !n.read).length;
 
-  const filteredNotifications = notifications.filter(n => {
+  const filteredNotifications = activeNotifications.filter(n => {
     if (filter === 'unread') return !n.read;
     if (filter === 'important') {
       return n.type === 'attendance' || n.type === 'promotion' || n.type === 'assignment';
@@ -50,9 +94,45 @@ export const NotificationInboxDrawer: React.FC<NotificationInboxDrawerProps> = (
   });
 
   const handleMarkAllRead = async () => {
-    const unreadIds = notifications.filter(n => !n.read).map(n => n.id);
+    const unreadIds = activeNotifications.filter(n => !n.read).map(n => n.id);
     if (unreadIds.length > 0) {
       await markAllNotificationsAsRead(unreadIds);
+    }
+  };
+
+  // Delete a single notification (clear one)
+  const handleDeleteOne = async (e: React.MouseEvent, notif: AppNotification) => {
+    e.stopPropagation();
+    
+    // 1. Immediately remove from current user's feed
+    const nextSet = new Set(clearedIds);
+    nextSet.add(notif.id);
+    saveClearedIds(nextSet);
+
+    // 2. If it's a direct notification for this user, delete from Firestore
+    if (notif.userId === currentUserId) {
+      await deleteAppNotification(notif.id);
+    }
+  };
+
+  // Delete all visible notifications (clear all)
+  const handleClearAll = async () => {
+    if (activeNotifications.length === 0) return;
+
+    // 1. Mark all active as cleared locally
+    const nextSet = new Set(clearedIds);
+    const directIdsToDelete: string[] = [];
+    activeNotifications.forEach(n => {
+      nextSet.add(n.id);
+      if (n.userId === currentUserId) {
+        directIdsToDelete.push(n.id);
+      }
+    });
+    saveClearedIds(nextSet);
+
+    // 2. If any direct notifications exist, batch delete them from Firestore
+    if (directIdsToDelete.length > 0) {
+      await deleteMultipleNotifications(directIdsToDelete);
     }
   };
 
@@ -177,11 +257,22 @@ export const NotificationInboxDrawer: React.FC<NotificationInboxDrawerProps> = (
               <button
                 type="button"
                 onClick={handleMarkAllRead}
-                className="nb-btn text-[11px] font-mono font-bold uppercase px-2.5 py-1.5 flex items-center gap-1.5 cursor-pointer bg-white text-black hover:bg-neutral-100"
+                className="nb-btn text-[11px] font-mono font-bold uppercase px-2.5 py-1.5 flex items-center gap-1.5 cursor-pointer bg-white text-black hover:bg-neutral-100 shadow-[1.5px_1.5px_0_#000]"
                 title="Mark all as read"
               >
                 <CheckCheck className="w-3.5 h-3.5 text-emerald-600" />
                 <span className="hidden sm:inline">Mark Read</span>
+              </button>
+            )}
+            {activeNotifications.length > 0 && (
+              <button
+                type="button"
+                onClick={handleClearAll}
+                className="nb-btn text-[11px] font-mono font-bold uppercase px-2.5 py-1.5 flex items-center gap-1.5 cursor-pointer bg-rose-50 text-rose-700 hover:bg-rose-100 border border-black shadow-[1.5px_1.5px_0_#000]"
+                title="Clear all notifications"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                <span className="hidden sm:inline">Clear All</span>
               </button>
             )}
             <button
@@ -229,7 +320,7 @@ export const NotificationInboxDrawer: React.FC<NotificationInboxDrawerProps> = (
                 : 'bg-transparent text-neutral-600 border-neutral-300 dark:border-neutral-700 hover:border-black'
             }`}
           >
-            All ({notifications.length})
+            All ({activeNotifications.length})
           </button>
           <button
             type="button"
@@ -300,9 +391,20 @@ export const NotificationInboxDrawer: React.FC<NotificationInboxDrawerProps> = (
                         <span className="font-mono text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-black/10 dark:bg-white/10 text-neutral-800 dark:text-neutral-200">
                           {getTypeLabel(notif.type)}
                         </span>
-                        <span className="font-mono text-[10px] text-neutral-500 shrink-0">
-                          {formatRelativeTime(notif.createdAt)}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-[10px] text-neutral-500 shrink-0">
+                            {formatRelativeTime(notif.createdAt)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => handleDeleteOne(e, notif)}
+                            className="p-1 rounded text-neutral-400 hover:text-rose-600 hover:bg-rose-100 dark:hover:bg-rose-950/60 transition-colors cursor-pointer"
+                            title="Delete notification"
+                            aria-label="Delete notification"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
 
                       <h4 className={`text-sm leading-snug ${isUnread ? 'font-black text-black dark:text-white' : 'font-bold text-neutral-800 dark:text-neutral-200'}`}>
