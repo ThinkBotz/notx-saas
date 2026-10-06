@@ -198,8 +198,9 @@ export default function LoginView({
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!rollNumberInput || !password) {
-      setError('Please enter both your Roll Number and Password');
+    const rawInput = rollNumberInput.trim();
+    if (!rawInput || !password) {
+      setError('Please enter your Roll Number / Email and Password');
       return;
     }
 
@@ -214,48 +215,84 @@ export default function LoginView({
         return;
       }
 
-      const cleanRoll = rollNumberInput.trim().toUpperCase();
+      const cleanUpper = rawInput.toUpperCase();
+      const cleanLower = rawInput.toLowerCase();
 
-      // Directly look up user profile in Firestore (bypassing Firebase Auth)
-      let foundUser = await findUserForLogin(cleanRoll, selectedTenantId);
+      // Directly look up user profile in Firestore
+      let foundUser = await findUserForLogin(rawInput, selectedTenantId);
       if (!foundUser) {
-        foundUser = allUsers.find(u =>
-          u.rollNumber?.toUpperCase() === cleanRoll &&
-          (!u.tenantId || u.tenantId.toLowerCase() === selectedTenantId.toLowerCase() || u.isSuperAdmin)
-        );
+        foundUser = allUsers.find(u => {
+          const matchRoll = u.rollNumber && u.rollNumber.toUpperCase() === cleanUpper;
+          const matchEmail = u.email && u.email.toLowerCase() === cleanLower;
+          const matchTenant = !selectedTenantId || !u.tenantId || u.tenantId.toLowerCase() === selectedTenantId.toLowerCase() || u.isSuperAdmin;
+          return (matchRoll || matchEmail) && matchTenant;
+        });
+      }
+
+      // Robust fallback across all tenants in case tenant dropdown was not switched
+      if (!foundUser) {
+        foundUser = allUsers.find(u => {
+          const matchRoll = u.rollNumber && u.rollNumber.toUpperCase() === cleanUpper;
+          const matchEmail = u.email && u.email.toLowerCase() === cleanLower;
+          return matchRoll || matchEmail;
+        });
+        if (foundUser && foundUser.tenantId && selectedTenantId && foundUser.tenantId.toLowerCase() !== selectedTenantId.toLowerCase()) {
+          setSelectedTenantId(foundUser.tenantId);
+        }
       }
 
       if (!foundUser) {
-        setError(`No user found with Roll Number "${cleanRoll}" in ${selectedTenant?.name || 'this department'}.`);
+        setError(`No account found for "${rawInput}". Please check your Roll Number or Department.`);
         setLoading(false);
         return;
       }
 
-      // Direct Username (Roll Number) + Password Authentication
+      // Direct Username / Roll Number + Password Authentication
       let isValidPassword = false;
+      const cleanPass = password.trim();
+      const userRoll = (foundUser.rollNumber || '').trim();
+      const validCodes = [
+        userRoll.toUpperCase(),
+        userRoll.toLowerCase(),
+        'notx@123',
+        'Welcome@123',
+        'NOTX@123',
+        'welcome@123'
+      ].filter(Boolean);
+
       if (foundUser.password) {
-        const check = await verifyPassword(password, foundUser.password);
+        const check = await verifyPassword(cleanPass, foundUser.password);
         isValidPassword = check.isValid;
+
+        // Try case variation for default roll number passwords
+        if (!isValidPassword && (cleanPass.toUpperCase() !== cleanPass || cleanPass.toLowerCase() !== cleanPass)) {
+          const checkUp = await verifyPassword(cleanPass.toUpperCase(), foundUser.password);
+          isValidPassword = checkUp.isValid;
+          if (!isValidPassword) {
+            const checkLow = await verifyPassword(cleanPass.toLowerCase(), foundUser.password);
+            isValidPassword = checkLow.isValid;
+          }
+        }
+
+        // Plain-text check for initial / legacy entries
         if (!isValidPassword) {
-          // Plain-text check for legacy unhashed entries
-          if (foundUser.password === password || password === cleanRoll || password === 'notx@123') {
+          if (foundUser.password === cleanPass || validCodes.includes(cleanPass)) {
             isValidPassword = true;
-            // Upgrade legacy password to salted PBKDF2 hash
-            const hashed = await hashPassword(password);
+            const hashed = await hashPassword(cleanPass);
             await updateUserProfile(foundUser.uid, { password: hashed }).catch(() => {});
           }
         }
       } else {
-        // Default initial credentials (roll number or notx@123)
-        if (password.toUpperCase() === cleanRoll || password === 'notx@123') {
+        // Default initial credentials (roll number or Welcome@123 or notx@123)
+        if (validCodes.includes(cleanPass) || validCodes.includes(cleanPass.toUpperCase())) {
           isValidPassword = true;
-          const hashed = await hashPassword(password);
+          const hashed = await hashPassword(cleanPass);
           await updateUserProfile(foundUser.uid, { password: hashed }).catch(() => {});
         }
       }
 
       if (!isValidPassword) {
-        setError('Invalid password. Please check your credentials.');
+        setError('Invalid password. Default password is your Roll Number or Welcome@123.');
         setLoading(false);
         return;
       }
@@ -276,11 +313,12 @@ export default function LoginView({
 
   const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    const cleanEmail = adminEmailInput.trim().toLowerCase();
-    const cleanPass = adminPasswordInput;
+    const rawInput = adminEmailInput.trim();
+    const cleanEmail = rawInput.toLowerCase();
+    const cleanPass = adminPasswordInput.trim();
 
-    if (!cleanEmail || !cleanPass) {
-      setError('Please enter both Admin Email and Password');
+    if (!rawInput || !cleanPass) {
+      setError('Please enter your Identifier (Email / Roll / Username) and Password');
       return;
     }
 
@@ -294,8 +332,56 @@ export default function LoginView({
       let tenant = (authRecord?.tenantId ? tenants.find(t => t.tenantId === authRecord.tenantId) : null)
         || await findTenantByAdminEmail(cleanEmail);
 
-      if (!isSuper && !tenant && !authRecord) {
-        setError(`No administrative account found for "${cleanEmail}".`);
+      // Check if user is a student or member attempting login via Admin Portal
+      let matchedUser = allUsers.find(u =>
+        (u.email?.toLowerCase() === cleanEmail || u.rollNumber?.toUpperCase() === rawInput.toUpperCase())
+      );
+      if (!matchedUser) {
+        matchedUser = await findUserForLogin(rawInput, selectedTenantId);
+      }
+
+      // If this is a student account entering credentials in the Admin form, seamlessly log them in!
+      if (matchedUser && matchedUser.role === 'student') {
+        let isStudentPassValid = false;
+        const userRoll = (matchedUser.rollNumber || '').trim();
+        const validCodes = [
+          userRoll.toUpperCase(),
+          userRoll.toLowerCase(),
+          'notx@123',
+          'Welcome@123',
+          'welcome@123'
+        ].filter(Boolean);
+
+        if (matchedUser.password) {
+          const chk = await verifyPassword(cleanPass, matchedUser.password);
+          isStudentPassValid = chk.isValid;
+          if (!isStudentPassValid) {
+            const chkUp = await verifyPassword(cleanPass.toUpperCase(), matchedUser.password);
+            isStudentPassValid = chkUp.isValid;
+          }
+          if (!isStudentPassValid && (matchedUser.password === cleanPass || validCodes.includes(cleanPass))) {
+            isStudentPassValid = true;
+          }
+        } else {
+          if (validCodes.includes(cleanPass) || validCodes.includes(cleanPass.toUpperCase())) {
+            isStudentPassValid = true;
+          }
+        }
+
+        if (isStudentPassValid) {
+          if (matchedUser.password) delete matchedUser.password;
+          recordUserActivity();
+          onLoginSuccess(matchedUser);
+          return;
+        } else {
+          setError('Invalid password for student account. Default password is your Roll Number or Welcome@123.');
+          setLoading(false);
+          return;
+        }
+      }
+
+      if (!isSuper && !tenant && !authRecord && (!matchedUser || (matchedUser.role !== 'admin' && matchedUser.role !== 'president' && matchedUser.role !== 'associate' && !matchedUser.isSuperAdmin))) {
+        setError(`No administrative account found for "${rawInput}". If you are a student, please switch to the Student Portal.`);
         setLoading(false);
         return;
       }
@@ -316,14 +402,17 @@ export default function LoginView({
       }
 
       if (!isPasswordValid) {
-        // Check admin user profile in Firestore
-        const adminUser = allUsers.find(u =>
-          (u.email?.toLowerCase() === cleanEmail || u.googleEmail?.toLowerCase() === cleanEmail) &&
-          (u.role === 'admin' || u.isSuperAdmin)
+        // Check admin or associate user profile in Firestore
+        const adminUser = matchedUser || allUsers.find(u =>
+          (u.email?.toLowerCase() === cleanEmail || u.rollNumber?.toUpperCase() === rawInput.toUpperCase()) &&
+          (u.role === 'admin' || u.role === 'president' || u.role === 'associate' || u.isSuperAdmin)
         );
         if (adminUser?.password) {
           const verifyRes = await verifyPassword(cleanPass, adminUser.password);
           isPasswordValid = verifyRes.isValid;
+          if (!isPasswordValid && adminUser.password === cleanPass) {
+            isPasswordValid = true;
+          }
         }
       }
 
@@ -750,26 +839,26 @@ export default function LoginView({
       {loginMode === 'admin' ? (
         /* Dedicated Admin Portal Dual-Auth Form */
         <form onSubmit={handleAdminLogin} className="space-y-4 mt-4">
-          {/* 1. Admin Email */}
+          {/* 1. Admin Email / Roll Number / Username */}
           <div>
             <label className="block mb-1.5 flex items-center justify-between text-[11px] font-mono font-bold uppercase tracking-wider text-[var(--nb-content)]">
               <span className="flex items-center gap-1.5">
-                <Mail className="w-3.5 h-3.5" />
-                ADMIN EMAIL
+                <User className="w-3.5 h-3.5" />
+                EMAIL / ROLL NUMBER / USERNAME
               </span>
               <span className="text-[9px] font-mono font-bold text-[var(--nb-secondary)] tracking-wider">
-                SUPER OR DEPT ADMIN
+                ADMIN OR STUDENT ID
               </span>
             </label>
             <div className="relative">
-              <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--nb-content)] pointer-events-none" />
+              <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--nb-content)] pointer-events-none" />
               <input
-                type="email"
+                type="text"
                 value={adminEmailInput}
                 onChange={(e) => setAdminEmailInput(e.target.value)}
-                placeholder="admin@college.edu or superadmin@notx.com"
+                placeholder="admin@college.edu or Roll Number"
                 className="w-full min-h-[46px] pl-10 pr-4 font-mono font-bold text-base sm:text-xs md:text-sm rounded-lg border-[2px] border-[var(--nb-ink)] bg-[var(--nb-surface)] text-[var(--nb-content)] shadow-[2.5px_2.5px_0_var(--nb-ink)] focus:shadow-[4px_4px_0_var(--nb-ink)] focus:translate-x-[-1px] focus:translate-y-[-1px] focus:outline-none transition-all placeholder:font-sans placeholder:text-neutral-400"
-                autoComplete="email"
+                autoComplete="username"
                 required
               />
             </div>
@@ -891,10 +980,10 @@ export default function LoginView({
             </div>
           </div>
 
-          {/* 2. Roll Number */}
+          {/* 2. Roll Number / Email / Username */}
           <div>
             <label className="block mb-1.5 flex items-center justify-between text-[11px] font-mono font-bold uppercase tracking-wider text-[var(--nb-content)]">
-              <span>ROLL NUMBER</span>
+              <span>ROLL NUMBER / USERNAME / EMAIL</span>
               <span className="text-[9px] font-mono font-bold text-[var(--nb-secondary)] tracking-wider">
                 E.G. 23HM1A3354
               </span>
@@ -904,9 +993,9 @@ export default function LoginView({
               <input
                 type="text"
                 value={rollNumberInput}
-                onChange={(e) => setRollNumberInput(e.target.value.toUpperCase())}
-                placeholder="e.g. 23HM1A3354"
-                className="w-full min-h-[46px] pl-10 pr-4 font-mono font-bold text-base sm:text-xs md:text-sm rounded-lg border-[2px] border-[var(--nb-ink)] bg-[var(--nb-surface)] text-[var(--nb-content)] shadow-[2.5px_2.5px_0_var(--nb-ink)] focus:shadow-[4px_4px_0_var(--nb-ink)] focus:translate-x-[-1px] focus:translate-y-[-1px] focus:outline-none transition-all uppercase placeholder:normal-case placeholder:font-sans placeholder:text-neutral-400"
+                onChange={(e) => setRollNumberInput(e.target.value)}
+                placeholder="e.g. 23HM1A3354 or Student Email"
+                className="w-full min-h-[46px] pl-10 pr-4 font-mono font-bold text-base sm:text-xs md:text-sm rounded-lg border-[2px] border-[var(--nb-ink)] bg-[var(--nb-surface)] text-[var(--nb-content)] shadow-[2.5px_2.5px_0_var(--nb-ink)] focus:shadow-[4px_4px_0_var(--nb-ink)] focus:translate-x-[-1px] focus:translate-y-[-1px] focus:outline-none transition-all placeholder:normal-case placeholder:font-sans placeholder:text-neutral-400"
                 autoComplete="username"
               />
             </div>

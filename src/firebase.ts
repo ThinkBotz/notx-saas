@@ -1523,7 +1523,7 @@ export async function findUserForLogin(identifier: string, tenantId?: string): P
       const docSnap = await getDoc(docRef);
       if (docSnap.exists()) {
         const u = docSnap.data() as UserProfile;
-        if (!cleanTenant || u.tenantId === cleanTenant || u.isSuperAdmin) {
+        if (!cleanTenant || (u.tenantId && u.tenantId.toLowerCase() === cleanTenant) || u.isSuperAdmin) {
           return u;
         }
       }
@@ -1540,12 +1540,11 @@ export async function findUserForLogin(identifier: string, tenantId?: string): P
       if (cleanTenant) {
         const tenantMatch = snapRoll.docs.find(d => {
           const u = d.data() as UserProfile;
-          return u.tenantId === cleanTenant || u.isSuperAdmin;
+          return (u.tenantId && u.tenantId.toLowerCase() === cleanTenant) || u.isSuperAdmin;
         });
         if (tenantMatch) return tenantMatch.data() as UserProfile;
-      } else {
-        return snapRoll.docs[0].data() as UserProfile;
       }
+      return snapRoll.docs[0].data() as UserProfile;
     }
   } catch {
     // proceed
@@ -1553,7 +1552,7 @@ export async function findUserForLogin(identifier: string, tenantId?: string): P
 
   // 3. Query by email
   try {
-    const searchEmails = [lowerId, cleanId];
+    const searchEmails = [lowerId, cleanId, upperId];
     if (syntheticEmail) searchEmails.push(syntheticEmail);
     const qEmail = query(collection(db, 'users'), where('email', 'in', searchEmails));
     const snapEmail = await getDocs(qEmail);
@@ -1561,12 +1560,11 @@ export async function findUserForLogin(identifier: string, tenantId?: string): P
       if (cleanTenant) {
         const tenantMatch = snapEmail.docs.find(d => {
           const u = d.data() as UserProfile;
-          return u.tenantId === cleanTenant || u.isSuperAdmin;
+          return (u.tenantId && u.tenantId.toLowerCase() === cleanTenant) || u.isSuperAdmin;
         });
         if (tenantMatch) return tenantMatch.data() as UserProfile;
-      } else {
-        return snapEmail.docs[0].data() as UserProfile;
       }
+      return snapEmail.docs[0].data() as UserProfile;
     }
   } catch {
     // proceed
