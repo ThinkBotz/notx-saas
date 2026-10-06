@@ -27,6 +27,7 @@ async function cleanSweep() {
     'announcements',
     'albums',
     'support_tickets',
+    'notifications',
     'deleted_backups',
     'audit_logs'
   ];
@@ -74,15 +75,21 @@ async function cleanSweep() {
     }
   }
 
-  // Clean users: keep only root admin Syed Sameer (PBQ3Z0T4I6QNMyH9WAYfsBzZgGJ2)
+  // Clean users: keep root Super Admin and authorized superadmins
   const usersSnap = await getDocs(collection(db, 'users'));
   console.log(`\n[users]: Evaluating ${usersSnap.size} users...`);
   let userBatch = writeBatch(db);
   let userCount = 0;
   let usersDeleted = 0;
   for (const d of usersSnap.docs) {
-    if (d.id === 'PBQ3Z0T4I6QNMyH9WAYfsBzZgGJ2') {
-      console.log(`   Preserving Root Super Admin: ${d.id} (${d.data().name})`);
+    const data = d.data();
+    const isSuper = data.isSuperAdmin ||
+      d.id === 'PBQ3Z0T4I6QNMyH9WAYfsBzZgGJ2' ||
+      d.id.startsWith('superadmin_') ||
+      (data.email && (data.email.toLowerCase() === 'syedsaadullah623@gmail.com' || data.email.toLowerCase() === 'syedsame2244@gmail.com'));
+
+    if (isSuper) {
+      console.log(`   Preserving Root Super Admin: ${d.id} (${data.name || data.email})`);
       continue;
     }
     userBatch.delete(doc(db, 'users', d.id));

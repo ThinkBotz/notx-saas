@@ -1446,6 +1446,33 @@ export async function fetchUsers(tenantId?: string): Promise<UserProfile[]> {
   }
 }
 
+export async function fetchStaffUsers(tenantId?: string): Promise<UserProfile[]> {
+  try {
+    const cleanTid = tenantId ? tenantId.trim().toLowerCase() : '';
+    const q = cleanTid
+      ? query(
+          collection(db, 'users'),
+          where('tenantId', '==', cleanTid),
+          where('role', 'in', ['admin', 'president', 'associate', 'coordinator', 'faculty'])
+        )
+      : query(
+          collection(db, 'users'),
+          where('role', 'in', ['admin', 'president', 'associate', 'coordinator', 'faculty'])
+        );
+    const querySnapshot = await getDocs(q);
+    const list: UserProfile[] = [];
+    querySnapshot.forEach((doc) => {
+      const u = doc.data() as UserProfile;
+      if (u.password) delete u.password;
+      list.push(u);
+    });
+    return list;
+  } catch (error) {
+    console.warn('fetchStaffUsers note:', error);
+    return [];
+  }
+}
+
 export async function fetchUserById(uid: string): Promise<UserProfile | null> {
   const path = `users/${uid}`;
   try {
@@ -1892,6 +1919,35 @@ export function subscribeToRegistrations(
   } catch (error) {
     console.error('Error setting up registrations subscription:', error);
     handleFirestoreError(error, OperationType.LIST, path);
+    return () => {};
+  }
+}
+
+export function subscribeToStudentRegistrations(
+  studentId: string,
+  rollNumber?: string,
+  callback?: (registrations: EventRegistration[]) => void
+): () => void {
+  try {
+    const cleanId = (studentId || '').trim();
+    if (!cleanId) {
+      callback?.([]);
+      return () => {};
+    }
+    const q = query(collection(db, 'registrations'), where('studentId', '==', cleanId));
+    return onSnapshot(q, (snapshot: any) => {
+      const registrations: EventRegistration[] = [];
+      snapshot.forEach((d: any) => {
+        registrations.push(d.data() as EventRegistration);
+      });
+      registrations.sort((a, b) => new Date(b.appliedAt || 0).getTime() - new Date(a.appliedAt || 0).getTime());
+      callback?.(registrations);
+    }, (error: any) => {
+      console.warn('subscribeToStudentRegistrations error:', error);
+      callback?.([]);
+    });
+  } catch (err) {
+    console.warn('Failed to subscribe to student registrations:', err);
     return () => {};
   }
 }

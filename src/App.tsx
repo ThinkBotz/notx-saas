@@ -30,9 +30,12 @@ import BrandLogo, { ACCENT_THEMES } from './components/BrandLogo';
 import { resolveTenantTheme, applyTenantTheme } from './utils/themePresets';
 import { 
   fetchUsers, 
+  fetchStaffUsers,
   fetchEvents, 
   fetchRegistrations, 
+  fetchRegistrationsByStudent,
   subscribeToRegistrations,
+  subscribeToStudentRegistrations,
   fetchAlbums, 
   fetchAnnouncements, 
   getAppConfig,
@@ -391,8 +394,20 @@ export default function App() {
       currentUser.role === 'president';
 
     if (!canViewAllTenantUsers) {
-      setAllUsers([currentUser]);
-      return;
+      // For students, synchronize only their own user profile document - eliminates downloading full user directory
+      const unsubSelf = onSnapshot(doc(db, 'users', currentUser.uid), (docSnap) => {
+        if (docSnap.exists()) {
+          const updatedSelf = docSnap.data() as UserProfile;
+          const hasChanged = JSON.stringify(updatedSelf) !== JSON.stringify(currentUser);
+          if (hasChanged) {
+            setCurrentUser(updatedSelf);
+            localStorage.setItem('notx_user', JSON.stringify(updatedSelf));
+          }
+        }
+      }, (error) => {
+        console.warn("Student user listener note:", error);
+      });
+      return () => unsubSelf();
     }
 
     const usersQuery = cleanActiveTid && !currentUser.isSuperAdmin
@@ -428,28 +443,54 @@ export default function App() {
     return () => unsubscribeUsers();
   }, [currentUser?.uid, activeTenantId, currentUser?.role, currentUser?.isSuperAdmin]);
 
-  // Realtime registrations sync
+  // Realtime registrations sync (tenant-wide for admins, personal-only for students)
   useEffect(() => {
     if (!currentUser) {
       setRegistrations([]);
       return;
     }
 
-    const unsubscribeRegs = subscribeToRegistrations((freshRegistrations) => {
-      setRegistrations(freshRegistrations);
-    }, activeTenantId);
+    const canViewAllTenantUsers = currentUser.isSuperAdmin || 
+      currentUser.role === 'admin' || 
+      currentUser.role === 'associate' || 
+      currentUser.role === 'coordinator' || 
+      currentUser.role === 'president';
 
-    return () => unsubscribeRegs();
-  }, [currentUser?.uid, activeTenantId]);
+    if (canViewAllTenantUsers) {
+      const unsubscribeRegs = subscribeToRegistrations((freshRegistrations) => {
+        setRegistrations(freshRegistrations);
+      }, activeTenantId);
+      return () => unsubscribeRegs();
+    } else {
+      const unsubscribeRegs = subscribeToStudentRegistrations(
+        currentUser.uid,
+        currentUser.rollNumber,
+        (freshRegistrations) => {
+          setRegistrations(freshRegistrations);
+        }
+      );
+      return () => unsubscribeRegs();
+    }
+  }, [currentUser?.uid, currentUser?.rollNumber, currentUser?.role, currentUser?.isSuperAdmin, activeTenantId]);
 
   const refreshAllData = async (tenantIdToFetch?: string) => {
     setIsDataLoading(true);
     try {
       const tId = tenantIdToFetch !== undefined ? tenantIdToFetch : activeTenantId;
+      const canViewAllTenantUsers = Boolean(
+        currentUser?.isSuperAdmin || 
+        currentUser?.role === 'admin' || 
+        currentUser?.role === 'associate' || 
+        currentUser?.role === 'coordinator' || 
+        currentUser?.role === 'president'
+      );
+
       const [u, e, r, g, a, config, tenantData] = await Promise.all([
-        fetchUsers(tId),
+        canViewAllTenantUsers ? fetchUsers(tId) : fetchStaffUsers(tId),
         fetchEvents(tId),
-        fetchRegistrations(tId),
+        canViewAllTenantUsers 
+          ? fetchRegistrations(tId) 
+          : (currentUser ? fetchRegistrationsByStudent(currentUser.uid) : Promise.resolve([])),
         fetchAlbums(tId),
         fetchAnnouncements(tId),
         getAppConfig(tId),
@@ -481,6 +522,12 @@ export default function App() {
         if (freshUser) {
           setCurrentUser(freshUser);
           localStorage.setItem('notx_user', JSON.stringify(freshUser));
+        } else if (!canViewAllTenantUsers) {
+          const selfProfile = await fetchUserById(currentUser.uid);
+          if (selfProfile) {
+            setCurrentUser(selfProfile);
+            localStorage.setItem('notx_user', JSON.stringify(selfProfile));
+          }
         }
       }
     } catch (err) {

@@ -7,7 +7,7 @@ import EventTicketModal from './EventTicketModal';
 import { fireConfetti } from '../utils/confetti';
 import { UserProfile, DepartmentEvent, EventRegistration, IssuedCertificate, AppBranding, DEFAULT_BRANDING, Tenant, SUPER_ADMIN_EMAILS } from '../types';
 
-import { createEvent, createRegistration, updateRegistrationStatus, updateRegistrationTeamMembers, deleteRegistration, deleteCertificate, deleteEvent, updateEvent, subscribeToCertificates, generateBatchCertificatesForEvent } from '../firebase';
+import { createEvent, createRegistration, updateRegistrationStatus, updateRegistrationTeamMembers, deleteRegistration, deleteCertificate, deleteEvent, updateEvent, subscribeToCertificates, generateBatchCertificatesForEvent, findUserForLogin } from '../firebase';
 
 interface EventsViewProps {
   user: UserProfile;
@@ -2002,7 +2002,7 @@ export default function EventsView({
                               </div>
                               <button
                                 type="button"
-                                onClick={() => {
+                                onClick={async () => {
                                   if (!draftRoll.trim()) {
                                     setRegFeedback('Teammate Roll Number is required.');
                                     return;
@@ -2018,7 +2018,10 @@ export default function EventsView({
                                     return;
                                   }
 
-                                  const teammateUser = allUsers.find(u => u.rollNumber?.toLowerCase() === searchRoll);
+                                  let teammateUser = allUsers.find(u => u.rollNumber?.toLowerCase() === searchRoll);
+                                  if (!teammateUser) {
+                                    teammateUser = (await findUserForLogin(searchRoll, user.tenantId)) || undefined;
+                                  }
 
                                   if (!teammateUser) {
                                     setRegFeedback('No student found with this roll number. They must be registered in NOTX Connect.');
