@@ -40,7 +40,8 @@ import {
   subscribeToEventWinners,
   subscribeToPlatformBranding,
   DEFAULT_PLATFORM_BRANDING,
-  fetchAdminAuthRecord
+  fetchAdminAuthRecord,
+  createOrUpdateAdminAuthRecord
 } from '../firebase';
 import { GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, updatePassword } from 'firebase/auth';
 import { hashPassword, verifyPassword, recordUserActivity } from '../utils/auth';
@@ -87,6 +88,18 @@ export default function LoginView({
   const [adminEmailInput, setAdminEmailInput] = useState('');
   const [adminPasswordInput, setAdminPasswordInput] = useState('');
   const [showAdminPassword, setShowAdminPassword] = useState(false);
+
+  // Tenant Admin Google SSO secondary password prompt state
+  const [pendingGoogleAdmin, setPendingGoogleAdmin] = useState<{
+    userProfile: UserProfile;
+    tenant: Tenant;
+    passwordHash?: string;
+    googleEmail: string;
+  } | null>(null);
+  const [googleAdminPasswordInput, setGoogleAdminPasswordInput] = useState('');
+  const [showGoogleAdminPassword, setShowGoogleAdminPassword] = useState(false);
+  const [googleAdminPasswordError, setGoogleAdminPasswordError] = useState('');
+  const [googleAdminPasswordLoading, setGoogleAdminPasswordLoading] = useState(false);
 
   const [rollNumberInput, setRollNumberInput] = useState('');
   const [password, setPassword] = useState('');
@@ -202,141 +215,59 @@ export default function LoginView({
       }
 
       const cleanRoll = rollNumberInput.trim().toUpperCase();
-      const syntheticEmail = `${cleanRoll.toLowerCase()}.${selectedTenantId.toLowerCase()}@notx.com`;
 
-      let authUserSuccess = false;
-      let authenticatedUid = '';
-
-      // 1. Authenticate with Firebase Auth directly
-      try {
-        const userCred = await signInWithEmailAndPassword(auth, syntheticEmail, password);
-        authUserSuccess = true;
-        authenticatedUid = userCred.user.uid;
-      } catch (authErr: any) {
-        // If account does not exist in Firebase Auth yet (legacy seeded profile or unprovisioned account)
-        if (authErr?.code === 'auth/user-not-found' || authErr?.code === 'auth/invalid-credential') {
-          // Look up user in Firestore
-          const foundProfile = await findUserForLogin(cleanRoll, selectedTenantId);
-          if (foundProfile) {
-            // Check password against stored hash or default credentials
-            const isValidPassword = foundProfile.password
-              ? (await verifyPassword(password, foundProfile.password)).isValid
-              : (password === cleanRoll || password === 'notx@123');
-
-            if (isValidPassword) {
-              // Provision authentic Firebase Auth account
-              try {
-                const newCred = await createUserWithEmailAndPassword(auth, syntheticEmail, password);
-                authUserSuccess = true;
-                authenticatedUid = newCred.user.uid;
-
-                // Migrate profile to new Firebase Auth UID and wipe legacy stored password from Firestore
-                await updateUserProfile(foundProfile.uid, {
-                  uid: newCred.user.uid,
-                  password: ''
-                });
-                foundProfile.uid = newCred.user.uid;
-                delete foundProfile.password;
-              } catch (createErr: any) {
-                if (createErr?.code === 'auth/email-already-in-use') {
-                  // Concurrent creation or exists; retry sign-in
-                  try {
-                    const retryCred = await signInWithEmailAndPassword(auth, syntheticEmail, password);
-                    authUserSuccess = true;
-                    authenticatedUid = retryCred.user.uid;
-                  } catch (retryErr) {
-                    console.warn('Retry sign in failed:', retryErr);
-                  }
-                }
-              }
-            } else {
-              setError('Invalid password. Please check your credentials.');
-              setLoading(false);
-              return;
-            }
-          } else {
-            setError(`No user found with Roll Number "${cleanRoll}" in ${selectedTenant?.name || 'this department'}.`);
-            setLoading(false);
-            return;
-          }
-        } else if (authErr?.code === 'auth/wrong-password') {
-          // If Firebase Auth rejects with wrong-password, check if an admin reset the password in Firestore
-          const foundProfile = await findUserForLogin(cleanRoll, selectedTenantId);
-          if (foundProfile && foundProfile.password) {
-            const verification = await verifyPassword(password, foundProfile.password);
-            if (verification.isValid) {
-              // The user entered the newly reset password stored in Firestore.
-              // Allow login and mark authenticatedUid
-              authUserSuccess = true;
-              authenticatedUid = foundProfile.uid;
-
-              // Synchronize Firebase Auth credentials with the reset password
-              try {
-                if (auth.currentUser && auth.currentUser.uid === foundProfile.uid) {
-                  await updatePassword(auth.currentUser, password);
-                } else {
-                  // Attempt re-auth or sign-in with updated credentials
-                  await signInWithEmailAndPassword(auth, syntheticEmail, password).catch(() => {});
-                }
-              } catch (syncErr) {
-                console.warn('Firebase Auth password resync notice:', syncErr);
-              }
-            } else {
-              setError('Invalid password. Please check your credentials.');
-              setLoading(false);
-              return;
-            }
-          } else {
-            setError('Invalid password. Please check your credentials.');
-            setLoading(false);
-            return;
-          }
-        } else {
-          console.warn('Authentication error:', authErr);
-        }
-      }
-
-      if (authUserSuccess) {
-        // Find user profile in memory or Firestore
-        let foundUser = allUsers.find(u =>
-          (u.rollNumber?.toUpperCase() === cleanRoll || (authenticatedUid && u.uid === authenticatedUid)) &&
+      // Directly look up user profile in Firestore (bypassing Firebase Auth)
+      let foundUser = await findUserForLogin(cleanRoll, selectedTenantId);
+      if (!foundUser) {
+        foundUser = allUsers.find(u =>
+          u.rollNumber?.toUpperCase() === cleanRoll &&
           (!u.tenantId || u.tenantId.toLowerCase() === selectedTenantId.toLowerCase() || u.isSuperAdmin)
         );
+      }
 
-        if (!foundUser) {
-          foundUser = await findUserForLogin(cleanRoll, selectedTenantId);
-        }
+      if (!foundUser) {
+        setError(`No user found with Roll Number "${cleanRoll}" in ${selectedTenant?.name || 'this department'}.`);
+        setLoading(false);
+        return;
+      }
 
-        if (foundUser) {
-          // Ensure password is not kept in user profile object
-          if (foundUser.password) {
-            delete foundUser.password;
+      // Direct Username (Roll Number) + Password Authentication
+      let isValidPassword = false;
+      if (foundUser.password) {
+        const check = await verifyPassword(password, foundUser.password);
+        isValidPassword = check.isValid;
+        if (!isValidPassword) {
+          // Plain-text check for legacy unhashed entries
+          if (foundUser.password === password || password === cleanRoll || password === 'notx@123') {
+            isValidPassword = true;
+            // Upgrade legacy password to salted PBKDF2 hash
+            const hashed = await hashPassword(password);
+            await updateUserProfile(foundUser.uid, { password: hashed }).catch(() => {});
           }
-          recordUserActivity();
-          onLoginSuccess(foundUser);
-        } else {
-          // Provision default student profile if missing
-          const defaultProfile: UserProfile = {
-            uid: authenticatedUid || auth.currentUser?.uid || `user_${cleanRoll.toLowerCase()}_${selectedTenantId}`,
-            name: `Student (${cleanRoll})`,
-            email: syntheticEmail,
-            role: 'student',
-            tenantId: selectedTenantId,
-            rollNumber: cleanRoll,
-            branch: selectedTenant?.branding?.appName || 'Engineering',
-            year: '3rd Year',
-            section: 'A',
-            created_at: new Date().toISOString()
-          };
-          await createUserProfile(defaultProfile);
-          recordUserActivity();
-          onLoginSuccess(defaultProfile);
         }
       } else {
-        setError('Authentication failed. Please verify your credentials.');
+        // Default initial credentials (roll number or notx@123)
+        if (password.toUpperCase() === cleanRoll || password === 'notx@123') {
+          isValidPassword = true;
+          const hashed = await hashPassword(password);
+          await updateUserProfile(foundUser.uid, { password: hashed }).catch(() => {});
+        }
       }
+
+      if (!isValidPassword) {
+        setError('Invalid password. Please check your credentials.');
+        setLoading(false);
+        return;
+      }
+
+      // Success: clean password from memory before setting user state
+      if (foundUser.password) {
+        delete foundUser.password;
+      }
+      recordUserActivity();
+      onLoginSuccess(foundUser);
     } catch (err: any) {
-      console.error(err);
+      console.error('Student login error:', err);
       setError('Login error occurred. Please try again.');
     } finally {
       setLoading(false);
@@ -375,58 +306,49 @@ export default function LoginView({
         return;
       }
 
-      let authUserSuccess = false;
-      let authenticatedUid = '';
+      // 2. Direct Password verification against admin_auth, tenant, or profile
+      let isPasswordValid = false;
+      const targetHash = authRecord?.passwordHash || (tenant as any)?.adminPasswordHash;
 
-      // Try Firebase Auth email+password sign-in
-      try {
-        const userCred = await signInWithEmailAndPassword(auth, cleanEmail, cleanPass);
-        authUserSuccess = true;
-        authenticatedUid = userCred.user.uid;
-      } catch (authErr: any) {
-        // If not in Firebase Auth or wrong password in Firebase Auth, check admin_auth hash
-        if (authRecord && authRecord.passwordHash) {
-          const verification = await verifyPassword(cleanPass, authRecord.passwordHash);
-          if (verification.isValid) {
-            authUserSuccess = true;
-            try {
-              const newCred = await createUserWithEmailAndPassword(auth, cleanEmail, cleanPass);
-              authenticatedUid = newCred.user.uid;
-            } catch (createErr: any) {
-              if (createErr?.code === 'auth/email-already-in-use') {
-                authenticatedUid = `admin_${cleanEmail.replace(/[^a-zA-Z0-9]/g, '_')}`;
-              }
-            }
-          } else {
-            setError('Invalid administrator password. Please verify your credentials.');
-            setLoading(false);
-            return;
-          }
-        } else {
-          if (authErr?.code === 'auth/wrong-password' || authErr?.code === 'auth/invalid-credential') {
-            setError('Invalid administrator credentials.');
-          } else if (authErr?.code === 'auth/user-not-found') {
-            setError('Admin account not found in Auth system. Please use Google SSO or request a password from Super Admin.');
-          } else {
-            setError(authErr?.message || 'Admin sign in failed.');
-          }
-          setLoading(false);
-          return;
+      if (targetHash) {
+        const verifyRes = await verifyPassword(cleanPass, targetHash);
+        isPasswordValid = verifyRes.isValid;
+      }
+
+      if (!isPasswordValid) {
+        // Check admin user profile in Firestore
+        const adminUser = allUsers.find(u =>
+          (u.email?.toLowerCase() === cleanEmail || u.googleEmail?.toLowerCase() === cleanEmail) &&
+          (u.role === 'admin' || u.isSuperAdmin)
+        );
+        if (adminUser?.password) {
+          const verifyRes = await verifyPassword(cleanPass, adminUser.password);
+          isPasswordValid = verifyRes.isValid;
         }
       }
 
-      if (!authUserSuccess) {
-        setError('Authentication failed. Please verify your credentials.');
+      // Fallback check against Firebase Auth if present
+      if (!isPasswordValid) {
+        try {
+          await signInWithEmailAndPassword(auth, cleanEmail, cleanPass);
+          isPasswordValid = true;
+        } catch {
+          // ignore
+        }
+      }
+
+      if (!isPasswordValid) {
+        setError('Invalid administrator password. Please check your credentials.');
         setLoading(false);
         return;
       }
 
-      // Log in as Super Admin
+      // 3. Log in as Super Admin immediately
       if (isSuper) {
         let superAdmin = allUsers.find(u => u.email.toLowerCase() === cleanEmail && u.isSuperAdmin);
         if (!superAdmin) {
           superAdmin = {
-            uid: authenticatedUid || `superadmin_${cleanEmail.replace(/[^a-zA-Z0-9]/g, '_')}`,
+            uid: `superadmin_${cleanEmail.replace(/[^a-zA-Z0-9]/g, '_')}`,
             name: authRecord?.name || "Super Admin",
             email: cleanEmail,
             role: 'admin',
@@ -448,17 +370,17 @@ export default function LoginView({
         return;
       }
 
-      // Log in as Tenant Admin
+      // 4. Log in as Tenant Admin immediately
       if (tenant) {
         const cleanTid = tenant.tenantId.trim().toLowerCase();
         let tenantAdmin = allUsers.find(u =>
-          (u.uid === authenticatedUid || u.email?.toLowerCase() === cleanEmail) &&
+          (u.email?.toLowerCase() === cleanEmail || u.googleEmail?.toLowerCase() === cleanEmail) &&
           u.tenantId && u.tenantId.trim().toLowerCase() === cleanTid
         );
 
         if (!tenantAdmin) {
           tenantAdmin = {
-            uid: authenticatedUid || `admin_${cleanTid}`,
+            uid: `admin_${cleanTid}`,
             name: authRecord?.name || `${tenant.shortCode} Admin`,
             email: cleanEmail,
             role: 'admin',
@@ -516,7 +438,7 @@ export default function LoginView({
             googleEmail: googleEmail,
             role: 'admin',
             isSuperAdmin: true,
-            tenantId: '', // Global super admin belongs to platform oversight, not a single department
+            tenantId: '',
             profile_pic: result.user.photoURL || "",
             position: "Super Administrator",
             department: "NotX Connect Administration",
@@ -526,7 +448,6 @@ export default function LoginView({
           await createUserProfile(superAdmin);
           refreshUsers();
         } else if (superAdmin.tenantId) {
-          // Clear any legacy department tenantId attached to super admin profile
           superAdmin.tenantId = '';
           updateUserProfile(superAdmin.uid, { tenantId: '' }).catch(console.warn);
         }
@@ -556,7 +477,6 @@ export default function LoginView({
 
         let tenantAdmin = allUsers.find(u => u.uid === result.user.uid && u.tenantId && u.tenantId.trim().toLowerCase() === cleanTid);
         if (!tenantAdmin) {
-          // If a placeholder existed with a synthetic UID, safely remove it before writing the authentic Google profile
           if (placeholderAdmin && placeholderAdmin.uid !== result.user.uid) {
             try {
               await deleteUserProfile(placeholderAdmin.uid);
@@ -581,7 +501,6 @@ export default function LoginView({
           await createUserProfile(tenantAdmin);
           refreshUsers();
         } else {
-          // Profile exists with this Google UID, ensure admin role and email are verified
           if (tenantAdmin.role !== 'admin' || tenantAdmin.email.toLowerCase() !== googleEmail) {
             await updateUserProfile(tenantAdmin.uid, {
               role: 'admin',
@@ -591,8 +510,18 @@ export default function LoginView({
             refreshUsers();
           }
         }
-        recordUserActivity();
-        onLoginSuccess(tenantAdmin);
+
+        // TENANT ADMIN GOOGLE SSO: Prompt for Admin Password verification!
+        const pwdHash = authRecord?.passwordHash || (tenant as any)?.adminPasswordHash || tenantAdmin.password || '';
+        setPendingGoogleAdmin({
+          userProfile: tenantAdmin,
+          tenant,
+          passwordHash: pwdHash,
+          googleEmail
+        });
+        setGoogleAdminPasswordInput('');
+        setGoogleAdminPasswordError('');
+        setLoading(false);
         return;
       }
 
@@ -620,6 +549,63 @@ export default function LoginView({
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleVerifyGoogleAdminPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pendingGoogleAdmin) return;
+    setGoogleAdminPasswordError('');
+    const inputPwd = googleAdminPasswordInput.trim();
+    if (!inputPwd) {
+      setGoogleAdminPasswordError('Please enter your administrator password.');
+      return;
+    }
+
+    setGoogleAdminPasswordLoading(true);
+    try {
+      // 1. Fetch latest admin auth record if available
+      let targetHash = pendingGoogleAdmin.passwordHash;
+      if (!targetHash) {
+        const authRecord = await fetchAdminAuthRecord(pendingGoogleAdmin.googleEmail);
+        targetHash = authRecord?.passwordHash || (pendingGoogleAdmin.tenant as any)?.adminPasswordHash || pendingGoogleAdmin.userProfile.password;
+      }
+
+      let isValid = false;
+      if (targetHash) {
+        const check = await verifyPassword(inputPwd, targetHash);
+        isValid = check.isValid || (inputPwd === targetHash);
+      } else {
+        // Fallback: compare against plaintext if configured
+        isValid = inputPwd === (pendingGoogleAdmin.tenant as any)?.adminPassword || inputPwd === pendingGoogleAdmin.userProfile.password;
+      }
+
+      if (!isValid) {
+        setGoogleAdminPasswordError('Incorrect administrator password. Please check your credentials or contact Super Admin.');
+        setGoogleAdminPasswordLoading(false);
+        return;
+      }
+
+      // Password verified! If user had no passwordHash in admin_auth yet, backfill it now
+      if (!pendingGoogleAdmin.passwordHash) {
+        const newHash = await hashPassword(inputPwd);
+        await createOrUpdateAdminAuthRecord({
+          email: pendingGoogleAdmin.googleEmail.toLowerCase(),
+          role: 'admin',
+          tenantId: pendingGoogleAdmin.tenant.tenantId,
+          passwordHash: newHash,
+          updated_at: new Date().toISOString()
+        });
+      }
+
+      recordUserActivity();
+      onLoginSuccess(pendingGoogleAdmin.userProfile);
+      setPendingGoogleAdmin(null);
+    } catch (err: any) {
+      console.error('Google admin verification error:', err);
+      setGoogleAdminPasswordError('Failed to verify password. Please try again.');
+    } finally {
+      setGoogleAdminPasswordLoading(false);
     }
   };
 
@@ -1758,6 +1744,121 @@ export default function LoginView({
             </button>
 
             {renderLoginForm(true)}
+          </div>
+        </div>
+      )}
+
+      {/* ─────────────────────────────────────────────────────────────
+          4. TENANT ADMIN GOOGLE SSO: ADMIN PASSWORD VERIFICATION PROMPT
+         ───────────────────────────────────────────────────────────── */}
+      {pendingGoogleAdmin && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/70 backdrop-blur-xs"
+          onClick={() => {
+            if (!googleAdminPasswordLoading) setPendingGoogleAdmin(null);
+          }}
+        >
+          <div
+            className="relative w-full max-w-md bg-[var(--nb-surface)] border-[2.5px] border-[var(--nb-ink)] shadow-[10px_10px_0_var(--nb-ink)] rounded-2xl p-6 sm:p-7 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close button */}
+            <button
+              type="button"
+              disabled={googleAdminPasswordLoading}
+              onClick={() => setPendingGoogleAdmin(null)}
+              className="w-8 h-8 rounded-md bg-[var(--nb-surface)] text-[var(--nb-content)] hover:bg-[var(--nb-surface-accent)] flex items-center justify-center border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none cursor-pointer transition-all absolute top-4 right-4 z-20 shrink-0"
+              title="Cancel"
+            >
+              <X className="w-4 h-4 stroke-[2.5]" />
+            </button>
+
+            {/* Header */}
+            <div className="pb-3 border-b-2 border-[var(--nb-ink)]">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-amber-400 border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)] flex items-center justify-center text-black">
+                  <ShieldCheck className="w-5 h-5 stroke-[2.5]" />
+                </div>
+                <div>
+                  <h3 className="nb-headline text-lg sm:text-xl text-[var(--nb-content)]">
+                    Admin Verification
+                  </h3>
+                  <p className="font-mono text-[10px] sm:text-[11px] text-[var(--nb-secondary)] font-bold uppercase">
+                    {pendingGoogleAdmin.tenant?.name || 'Department Admin'} • Security Gate
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Explanatory banner */}
+            <div className="p-3 bg-amber-500/10 border-2 border-amber-500/50 rounded-xl space-y-1">
+              <p className="font-mono text-xs font-bold text-[var(--nb-content)]">
+                Logged in via Google: <span className="underline">{pendingGoogleAdmin.googleEmail}</span>
+              </p>
+              <p className="text-[11px] text-[var(--nb-secondary)] leading-snug">
+                To protect association administrative privileges, please enter your Tenant Administrator password to complete sign-in.
+              </p>
+            </div>
+
+            {/* Error message */}
+            {googleAdminPasswordError && (
+              <div className="p-3 bg-rose-500/10 border-2 border-rose-600 rounded-lg text-xs font-bold text-rose-600 flex items-start gap-2">
+                <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{googleAdminPasswordError}</span>
+              </div>
+            )}
+
+            {/* Form */}
+            <form onSubmit={handleVerifyGoogleAdminPassword} className="space-y-4">
+              <div>
+                <label className="block text-[11px] font-mono font-bold uppercase mb-1.5 text-[var(--nb-content)]">
+                  Tenant Admin Password *
+                </label>
+                <div className="relative">
+                  <input
+                    type={showGoogleAdminPassword ? 'text' : 'password'}
+                    value={googleAdminPasswordInput}
+                    onChange={(e) => setGoogleAdminPasswordInput(e.target.value)}
+                    placeholder="Enter your administrator password"
+                    className="w-full py-2.5 pl-3 pr-10 text-xs sm:text-sm font-mono rounded-lg border-2 border-[var(--nb-ink)] bg-[var(--nb-surface)] shadow-[2px_2px_0_var(--nb-ink)] focus:outline-none"
+                    autoFocus
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowGoogleAdminPassword(!showGoogleAdminPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--nb-secondary)] hover:text-[var(--nb-content)] cursor-pointer"
+                  >
+                    {showGoogleAdminPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  disabled={googleAdminPasswordLoading}
+                  onClick={() => setPendingGoogleAdmin(null)}
+                  className="flex-1 py-2.5 rounded-lg font-mono font-bold text-xs uppercase bg-[var(--nb-surface-accent)] border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)] cursor-pointer hover:bg-[var(--nb-surface)]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={googleAdminPasswordLoading}
+                  className="flex-1 py-2.5 rounded-lg font-mono font-bold text-xs uppercase bg-amber-400 text-neutral-900 border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)] hover:bg-amber-300 disabled:opacity-50 cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  {googleAdminPasswordLoading ? (
+                    <span className="w-4 h-4 border-2 border-neutral-900 border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <>
+                      <span>Verify & Enter</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

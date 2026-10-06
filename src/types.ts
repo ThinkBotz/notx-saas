@@ -5,6 +5,7 @@ export interface Tenant {
   name: string;
   shortCode: string;
   adminEmail: string;
+  adminPasswordHash?: string;
   institution?: string;
   status: 'active' | 'inactive';
   branding?: AppBranding;

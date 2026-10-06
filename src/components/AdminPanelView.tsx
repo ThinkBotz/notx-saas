@@ -86,7 +86,6 @@ import {
   revokeBatchCertificatesForEvent,
   exportAllDatabaseData,
   subscribeToAppConfig,
-  createStudentAuthAccount,
   subscribeToTenantTickets,
   addTicketReply,
   updateTicketStatus,
@@ -1085,18 +1084,19 @@ export default function AdminPanelView({
           }
         }
 
-        // Provision synthetic account in Firebase Auth
-        const authRes = await createStudentAuthAccount(roll, activeTenant, pwd);
-        const syntheticEmail = authRes.email || `${roll.toLowerCase()}.${activeTenant.toLowerCase()}@notx.com`;
+        const cleanRoll = roll.trim().toUpperCase();
+        const syntheticEmail = `${cleanRoll.toLowerCase()}.${activeTenant.toLowerCase()}@notx.com`;
+        const hashedPassword = await hashPassword(pwd);
 
         const newProfile: UserProfile = {
-          uid: authRes.uid || `user_student_${roll.toLowerCase()}_${activeTenant}`,
-          name: `Student (${roll})`,
+          uid: `user_student_${cleanRoll.toLowerCase()}_${activeTenant.toLowerCase()}`,
+          name: `Student (${cleanRoll})`,
           email: syntheticEmail,
+          password: hashedPassword,
           role: 'student',
           tenantId: activeTenant,
           phone: '',
-          rollNumber: roll,
+          rollNumber: cleanRoll,
           branch: branding.appName || 'Engineering',
           year: '3rd Year',
           section: 'A',

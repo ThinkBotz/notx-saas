@@ -153,13 +153,14 @@ export async function fetchAdminAuthRecord(email: string): Promise<AdminAuthReco
   }
 }
 
-export async function createOrUpdateAdminAuthRecord(record: AdminAuthRecord): Promise<void> {
+export async function createOrUpdateAdminAuthRecord(record: Partial<AdminAuthRecord> & { email: string }): Promise<void> {
   const cleanEmail = record.email.trim().toLowerCase();
   try {
     await setDoc(doc(db, 'admin_auth', cleanEmail), cleanUndefined({
       ...record,
       id: cleanEmail,
-      email: cleanEmail
+      email: cleanEmail,
+      updated_at: record.updated_at || new Date().toISOString()
     }), { merge: true });
   } catch (err) {
     console.error('Failed to save admin auth record:', err);
@@ -219,7 +220,12 @@ export async function resetTenantAdminPassword(
     updated_at: new Date().toISOString()
   }), { merge: true });
 
-  // 2. Update user profile password hash in users collection
+  // 2. Update tenant document directly
+  await updateDoc(doc(db, 'tenants', cleanId), {
+    adminPasswordHash: passHash
+  }).catch(err => console.warn('Tenant doc password sync notice:', err));
+
+  // 3. Update user profile password hash in users collection
   const q = query(collection(db, 'users'), where('tenantId', '==', cleanId));
   const snap = await getDocs(q);
   for (const uDoc of snap.docs) {
@@ -231,10 +237,10 @@ export async function resetTenantAdminPassword(
     }
   }
 
-  // 3. Attempt secondary account creation if account doesn't exist in Firebase Auth yet
-  await createAdminAuthAccount(cleanEmail, newPassword);
+  // 4. Attempt secondary account creation if account doesn't exist in Firebase Auth yet
+  await createAdminAuthAccount(cleanEmail, newPassword).catch(() => {});
 
-  // 4. Log audit entry
+  // 5. Log audit entry
   await writeAuditLog({
     action: 'admin.password_reset',
     tenantId: cleanId,
@@ -251,10 +257,20 @@ export async function createTenant(tenant: Tenant, initialAdminPassword?: string
   const path = `tenants/${cleanId}`;
   try {
     const cleanAdminEmail = tenant.adminEmail.trim().toLowerCase();
+
+    // Optional password hash
+    let passwordHash = '';
+    if (initialAdminPassword && initialAdminPassword.trim()) {
+      passwordHash = await hashPassword(initialAdminPassword.trim());
+      // Provision Firebase Auth account in secondary instance
+      await createAdminAuthAccount(cleanAdminEmail, initialAdminPassword.trim()).catch(() => {});
+    }
+
     const finalTenant: Tenant = {
       ...tenant,
       tenantId: cleanId,
       adminEmail: cleanAdminEmail,
+      adminPasswordHash: passwordHash || undefined,
       status: tenant.status || 'active',
       branding: tenant.branding || {
         ...DEFAULT_BRANDING,
@@ -266,14 +282,6 @@ export async function createTenant(tenant: Tenant, initialAdminPassword?: string
       createdAt: tenant.createdAt || new Date().toISOString()
     };
     await setDoc(doc(db, 'tenants', cleanId), cleanUndefined(finalTenant));
-
-    // Optional password hash
-    let passwordHash = '';
-    if (initialAdminPassword && initialAdminPassword.trim()) {
-      passwordHash = await hashPassword(initialAdminPassword.trim());
-      // Provision Firebase Auth account in secondary instance
-      await createAdminAuthAccount(cleanAdminEmail, initialAdminPassword.trim());
-    }
 
     // Provision default tenant admin user profile in Firestore
     const adminUid = `admin_${cleanId}_${Date.now()}`;
