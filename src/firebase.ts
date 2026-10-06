@@ -26,6 +26,7 @@ import {
   Tenant,
   SUPER_ADMIN_EMAILS,
   UserProfile,
+  AssociateMember,
   TeamMember,
   AppConfig,
   SupportInfo,
@@ -1387,6 +1388,77 @@ export async function findUserForLogin(identifier: string, tenantId?: string): P
   }
 
   return null;
+}
+
+// ---------------- DEDICATED PUBLIC ASSOCIATES REGISTRY ----------------
+export async function fetchAssociates(tenantId?: string): Promise<AssociateMember[]> {
+  try {
+    const cleanTid = (tenantId || getActiveTenantId()).trim().toLowerCase();
+    const q = cleanTid
+      ? query(collection(db, 'associates'), where('tenantId', '==', cleanTid))
+      : collection(db, 'associates');
+    const querySnapshot = await getDocs(q);
+    const list: AssociateMember[] = [];
+    querySnapshot.forEach((d) => {
+      list.push(d.data() as AssociateMember);
+    });
+    return list;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, 'associates');
+    return [];
+  }
+}
+
+export async function createAssociate(associate: AssociateMember): Promise<void> {
+  const path = `associates/${associate.id}`;
+  try {
+    const docRef = doc(db, 'associates', associate.id);
+    await setDoc(docRef, cleanUndefined(associate));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, path);
+  }
+}
+
+export async function updateAssociate(id: string, data: Partial<AssociateMember>): Promise<void> {
+  const path = `associates/${id}`;
+  try {
+    const docRef = doc(db, 'associates', id);
+    await updateDoc(docRef, cleanUndefined(data));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
+}
+
+export async function deleteAssociate(id: string): Promise<void> {
+  const path = `associates/${id}`;
+  try {
+    const docRef = doc(db, 'associates', id);
+    await deleteDoc(docRef);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
+export function subscribeToAssociates(callback: (associates: AssociateMember[]) => void, tenantId?: string): () => void {
+  try {
+    const cleanTid = (tenantId || getActiveTenantId()).trim().toLowerCase();
+    const q = cleanTid
+      ? query(collection(db, 'associates'), where('tenantId', '==', cleanTid))
+      : collection(db, 'associates');
+    return onSnapshot(q, (snapshot) => {
+      const list: AssociateMember[] = [];
+      snapshot.forEach((d) => {
+        list.push(d.data() as AssociateMember);
+      });
+      callback(list);
+    }, (error) => {
+      console.warn('Associates real-time subscription notice:', error);
+      callback([]);
+    });
+  } catch (err) {
+    console.warn('Failed to subscribe to associates:', err);
+    return () => {};
+  }
 }
 
 // Events

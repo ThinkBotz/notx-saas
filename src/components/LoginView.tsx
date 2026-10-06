@@ -37,7 +37,6 @@ import {
   deleteUserProfile,
   fetchEvents,
   subscribeToEventWinners,
-  fetchUsers,
   subscribeToPlatformBranding,
   DEFAULT_PLATFORM_BRANDING
 } from '../firebase';
@@ -88,7 +87,6 @@ export default function LoginView({
   // Desktop showcase states
   const [events, setEvents] = useState<DepartmentEvent[]>([]);
   const [winners, setWinners] = useState<EventWinner[]>([]);
-  const [showcaseUsers, setShowcaseUsers] = useState<UserProfile[]>([]);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
 
   // Forgot password modal state
@@ -99,7 +97,7 @@ export default function LoginView({
   const [forgotErr, setForgotErr] = useState('');
   const [forgotLoading, setForgotLoading] = useState(false);
 
-  // Subscribe to real-time events, users, and winners for selected tenant showcase
+  // Subscribe to real-time events and winners for selected tenant showcase
   useEffect(() => {
     let isMounted = true;
     if (selectedTenantId) {
@@ -108,12 +106,6 @@ export default function LoginView({
           if (isMounted) setEvents(evList || []);
         })
         .catch((err) => console.warn('Error fetching showcase events:', err));
-
-      fetchUsers(selectedTenantId)
-        .then((uList) => {
-          if (isMounted && uList) setShowcaseUsers(uList);
-        })
-        .catch((err) => console.warn('Error fetching showcase users:', err));
     }
 
     const unsubWinners = subscribeToEventWinners((winList) => {
@@ -532,7 +524,7 @@ export default function LoginView({
 
   const cleanSelectedTid = selectedTenantId ? selectedTenantId.trim().toLowerCase() : '';
 
-  const effectiveTenantUsers = showcaseUsers.length > 0 ? showcaseUsers : allUsers;
+  const effectiveTenantUsers = allUsers || [];
 
   const tenantMembersCount = effectiveTenantUsers.filter(
     u => !u.isSuperAdmin && u.uid !== 'admin_master' &&

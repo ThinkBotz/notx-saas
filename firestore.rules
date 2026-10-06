@@ -277,5 +277,17 @@ service cloud.firestore {
       allow read, delete, update: if isSuperAdmin();
       allow create: if true;
     }
+
+    // --- 15. Associates Collection (Public Directory & ID Cards) ---
+    // Decoupled from private users collection: Publicly readable for ID badge verification
+    // Write: Super Admin or Tenant Admin
+    match /associates/{associateId} {
+      allow read: if true;
+      allow create, update, delete: if isSuperAdmin() || (
+        request.resource.data.tenantId != null && isTenantAdmin(request.resource.data.tenantId)
+      ) || (
+        resource.data.tenantId != null && isTenantAdmin(resource.data.tenantId)
+      );
+    }
   }
 }

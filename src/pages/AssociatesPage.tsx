@@ -3,25 +3,30 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   Search,
   ArrowLeft,
-  ShieldCheck,
   Sparkles,
   ExternalLink,
-  Filter,
   Users,
-  Award,
-  Loader2
+  Loader2,
+  Plus,
+  Trash2
 } from 'lucide-react';
-import { fetchUsers, getTenant } from '../firebase';
-import { UserProfile, Tenant, SUPER_ADMIN_EMAILS } from '../types';
+import { 
+  fetchAssociates, 
+  subscribeToAssociates, 
+  createAssociate, 
+  deleteAssociate,
+  fetchUsers, 
+  getTenant 
+} from '../firebase';
+import { AssociateMember, Tenant, SUPER_ADMIN_EMAILS } from '../types';
 import { useTenantContext } from '../context/TenantContext';
 import AssociateIdCard from '../components/AssociateIdCard';
 import EditAssociateModal from '../components/EditAssociateModal';
 
 // Helper for executive ranking
-const getExecutiveRank = (position?: string, role?: string): number => {
-  if (role === 'president') return 1;
+const getExecutiveRank = (position?: string): number => {
   const pos = (position || '').toLowerCase().trim();
-  if (pos === 'president') return 1;
+  if (pos === 'president' || (pos.includes('president') && !pos.includes('vice'))) return 1;
   if (pos.includes('vice president') || pos.includes('vp')) return 2;
   if (pos.includes('general secretary') || pos.includes('gen sec')) return 3;
   if (pos.includes('joint secretary')) return 4;
@@ -42,51 +47,93 @@ export default function AssociatesPage() {
 
   const { currentUser } = useTenantContext();
 
-  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [associates, setAssociates] = useState<AssociateMember[]>([]);
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [activeCategory, setActiveCategory] = useState<'ALL' | 'EXECUTIVES' | 'TECH' | 'OPERATIONS' | 'STUDENTS'>('ALL');
-  const [editingMember, setEditingMember] = useState<UserProfile | null>(null);
+  
+  // Modal State for adding or editing cards
+  const [editingMember, setEditingMember] = useState<AssociateMember | null>(null);
+  const [isCreatingNew, setIsCreatingNew] = useState<boolean>(false);
 
-  // Check if current user has administrator or super administrator authority to edit cards
+  // Check if current user has administrator or super administrator authority to manage cards
   const isSuperAdminUser = Boolean(
     currentUser && (
       currentUser.isSuperAdmin ||
       (currentUser.email && SUPER_ADMIN_EMAILS.includes(currentUser.email.toLowerCase()))
     )
   );
-  const isTenantAdmin = Boolean(currentUser && currentUser.role === 'admin');
-  const canEditCards = isSuperAdminUser || isTenantAdmin;
+  const isTenantAdmin = Boolean(
+    currentUser &&
+    currentUser.role === 'admin' &&
+    (!currentUser.tenantId || currentUser.tenantId.toLowerCase() === targetTenantId)
+  );
+  const canManageCards = isSuperAdminUser || isTenantAdmin;
 
   useEffect(() => {
     let isMounted = true;
+    setLoading(true);
 
-    async function loadData() {
-      setLoading(true);
-      try {
-        const [fetchedUsers, fetchedTenant] = await Promise.all([
-          fetchUsers(targetTenantId),
-          getTenant(targetTenantId)
-        ]);
+    // 1. Fetch Tenant Metadata
+    getTenant(targetTenantId)
+      .then(t => {
+        if (isMounted && t) setTenant(t);
+      })
+      .catch(console.warn);
 
-        if (isMounted) {
-          setUsers(fetchedUsers || []);
-          if (fetchedTenant) {
-            setTenant(fetchedTenant);
+    // 2. Real-time Subscription to Dedicated Associates Registry
+    const unsub = subscribeToAssociates(async (list) => {
+      if (!isMounted) return;
+
+      // If the dedicated collection is empty, run zero-disruption migration from legacy user directory
+      if (list.length === 0) {
+        try {
+          const legacyUsers = await fetchUsers(targetTenantId);
+          const legacyAssociates = (legacyUsers || []).filter(u => {
+            if (u.role === 'president' || u.role === 'associate' || u.role === 'coordinator') return true;
+            const p = (u.position || '').toLowerCase();
+            return p.includes('president') || p.includes('secretary') || p.includes('treasurer') || p.includes('lead') || p.includes('head');
+          });
+
+          if (legacyAssociates.length > 0 && isMounted) {
+            // Seed each into the dedicated associates collection
+            const migrated: AssociateMember[] = [];
+            for (const leg of legacyAssociates) {
+              const assocObj: AssociateMember = {
+                id: `assoc_${(leg.rollNumber || leg.uid).toLowerCase()}`,
+                tenantId: targetTenantId,
+                name: leg.name || 'Associate',
+                rollNumber: leg.rollNumber || '',
+                position: leg.position || (leg.role === 'president' ? 'President' : 'Associate Lead'),
+                year: leg.year || '3rd Year',
+                section: leg.section || 'A',
+                responsibilities: leg.responsibilities || '',
+                skills: leg.skills || '',
+                profile_pic: leg.profile_pic || '',
+                linkedin: leg.linkedin || '',
+                created_at: new Date().toISOString()
+              };
+              migrated.push(assocObj);
+              // Save asynchronously to Firestore
+              createAssociate(assocObj).catch(console.warn);
+            }
+            setAssociates(migrated);
+            setLoading(false);
+            return;
           }
+        } catch (migErr) {
+          console.warn('Associates auto-seed notice:', migErr);
         }
-      } catch (err) {
-        console.error('Failed to load associates data:', err);
-      } finally {
-        if (isMounted) setLoading(false);
       }
-    }
 
-    loadData();
+      setAssociates(list);
+      setLoading(false);
+    }, targetTenantId);
 
     return () => {
       isMounted = false;
+      unsub();
     };
   }, [targetTenantId]);
 
@@ -95,57 +142,19 @@ export default function AssociatesPage() {
   const departmentName = tenant?.branding?.tagline || 'CSE (Artificial Intelligence & Machine Learning)';
   const collegeCode = (tenant?.shortCode || 'AITK').toUpperCase() + ' 2026';
 
-  // Filter out system admins / master admin
-  const validUsers = useMemo(() => {
-    return users.filter(u => !u.isSuperAdmin && u.uid !== 'admin_master');
-  }, [users]);
-
-  // Extract core associates & executives
-  const associateMembers = useMemo(() => {
-    return validUsers.filter(u => {
-      // 1. Explicit role match
-      if (u.role === 'president' || u.role === 'associate' || u.role === 'coordinator') return true;
-
-      // 2. Position match (President, VP, Secretary, Treasurer, Lead, Head, Coordinator)
-      const pos = (u.position || '').toLowerCase();
-      if (
-        pos.includes('president') ||
-        pos.includes('secretary') ||
-        pos.includes('treasurer') ||
-        pos.includes('head') ||
-        pos.includes('lead') ||
-        pos.includes('director') ||
-        pos.includes('coordinator') ||
-        pos.includes('convenor') ||
-        pos.includes('manager') ||
-        pos.includes('strategist') ||
-        pos.includes('engineer') ||
-        pos.includes('designer') ||
-        pos.includes('developer') ||
-        pos.includes('associate')
-      ) {
-        return true;
-      }
-
-      return false;
-    });
-  }, [validUsers]);
-
   // Categorize or filter based on user selection
   const filteredList = useMemo(() => {
-    let baseList = activeCategory === 'STUDENTS' ? validUsers : associateMembers;
+    let baseList = [...associates];
 
-    // If activeCategory is specific
     if (activeCategory === 'EXECUTIVES') {
       baseList = baseList.filter(u => {
-        if (u.role === 'president') return true;
         const pos = (u.position || '').toLowerCase();
-        return pos.includes('president') || pos.includes('secretary') || pos.includes('treasurer');
+        return pos.includes('president') || pos.includes('secretary') || pos.includes('treasurer') || pos.includes('vice');
       });
     } else if (activeCategory === 'TECH') {
       baseList = baseList.filter(u => {
         const pos = (u.position || '').toLowerCase();
-        return pos.includes('tech') || pos.includes('developer') || pos.includes('engineer') || pos.includes('web');
+        return pos.includes('tech') || pos.includes('developer') || pos.includes('engineer') || pos.includes('web') || pos.includes('lead');
       });
     } else if (activeCategory === 'OPERATIONS') {
       baseList = baseList.filter(u => {
@@ -167,13 +176,25 @@ export default function AssociatesPage() {
     }
 
     // Sort naturally: Executives first, then rank, then roll number
-    return [...baseList].sort((a, b) => {
-      const rankA = getExecutiveRank(a.position, a.role);
-      const rankB = getExecutiveRank(b.position, b.role);
+    return baseList.sort((a, b) => {
+      const rankA = getExecutiveRank(a.position);
+      const rankB = getExecutiveRank(b.position);
       if (rankA !== rankB) return rankA - rankB;
       return (a.rollNumber || a.name || '').localeCompare(b.rollNumber || b.name || '', undefined, { numeric: true, sensitivity: 'base' });
     });
-  }, [associateMembers, validUsers, activeCategory, searchQuery]);
+  }, [associates, activeCategory, searchQuery]);
+
+  const handleDeleteCard = async (id: string, name: string) => {
+    if (!window.confirm(`Are you sure you want to remove ${name}'s associate badge?`)) {
+      return;
+    }
+    try {
+      await deleteAssociate(id);
+      setAssociates(prev => prev.filter(a => a.id !== id));
+    } catch (err: any) {
+      alert('Failed to delete badge: ' + err.message);
+    }
+  };
 
   return (
     <div
@@ -212,8 +233,22 @@ export default function AssociatesPage() {
             </div>
           </div>
 
-          {/* Right: Badge stats & Portal link */}
+          {/* Right: Add Card (Admin) & Stats */}
           <div className="flex items-center gap-2 sm:gap-3">
+            {canManageCards && (
+              <button
+                onClick={() => {
+                  setEditingMember(null);
+                  setIsCreatingNew(true);
+                }}
+                className="inline-flex items-center gap-1.5 font-mono text-xs font-black px-3 py-1.5 rounded bg-amber-400 hover:bg-amber-500 text-neutral-950 border-2 border-[#111111] shadow-[2px_2px_0_#111111] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
+                title="Add New Associate Card"
+              >
+                <Plus className="w-4 h-4 stroke-[3]" />
+                <span className="hidden xs:inline">ADD ASSOCIATE</span>
+              </button>
+            )}
+
             <span className="bg-neutral-950 text-white font-mono text-xs font-bold px-2.5 py-1 rounded border-2 border-[#111111] shadow-[2px_2px_0_#000] shrink-0">
               {filteredList.length} PASSES
             </span>
@@ -232,20 +267,30 @@ export default function AssociatesPage() {
       {/* 2. Hero Billboard Banner */}
       <section className="bg-amber-300 border-b-[3px] border-[#111111] px-4 sm:px-8 py-8 sm:py-10 shadow-[0_4px_0_#111111]">
         <div className="max-w-6xl mx-auto">
-
-
           <h1 className="font-display font-black text-3xl sm:text-5xl text-neutral-950 uppercase tracking-tight leading-none">
             AURA ML ASSOCIATES
           </h1>
           <p className="font-sans font-bold text-sm sm:text-base text-neutral-900 mt-2 max-w-3xl leading-relaxed">
             Hi There 👋 <br />
-            This is the list of all the associates of the AURA ML association.
+            This is the official showcase registry of all associates and executive leaders of {associationName}.
           </p>
 
-          {canEditCards && (
-            <div className="mt-4 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-neutral-950 text-amber-400 font-mono text-xs font-black border-2 border-neutral-950 shadow-[2.5px_2.5px_0_#fff]">
-              <Sparkles className="w-4 h-4 text-amber-400" />
-              <span>SUPER ADMIN EDIT MODE ACTIVE • YOU CAN MODIFY BADGES DIRECTLY</span>
+          {canManageCards && (
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-neutral-950 text-amber-400 font-mono text-xs font-black border-2 border-neutral-950 shadow-[2.5px_2.5px_0_#fff]">
+                <Sparkles className="w-4 h-4 text-amber-400" />
+                <span>ADMINISTRATIVE BADGE MANAGER • ADD & EDIT CARDS DYNAMICALLY</span>
+              </div>
+              <button
+                onClick={() => {
+                  setEditingMember(null);
+                  setIsCreatingNew(true);
+                }}
+                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white hover:bg-neutral-100 text-neutral-950 font-mono text-xs font-black border-2 border-[#111111] shadow-[2.5px_2.5px_0_#111111] cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>+ ADD NEW BADGE</span>
+              </button>
             </div>
           )}
         </div>
@@ -275,7 +320,7 @@ export default function AssociatesPage() {
               { id: 'EXECUTIVES', label: 'EXECUTIVES' },
               { id: 'TECH', label: 'TECH & DEV' },
               { id: 'OPERATIONS', label: 'OPS & PR' },
-              { id: 'STUDENTS', label: 'ALL STUDENTS' }
+              { id: 'STUDENTS', label: 'ALL PASSES' }
             ].map(tab => (
               <button
                 key={tab.id}
@@ -301,10 +346,10 @@ export default function AssociatesPage() {
             </div>
             <Loader2 className="w-6 h-6 text-neutral-950 animate-spin mb-2 stroke-[2.5]" />
             <div className="font-display font-black text-xl text-neutral-950 tracking-wide uppercase">
-              NOTX • LOADING...
+              NOTX • LOADING BADGES...
             </div>
             <p className="font-mono text-xs text-neutral-600 mt-1">
-              Synchronizing associate registry from {associationName} datastore
+              Synchronizing verified associate registry for {associationName}
             </p>
           </div>
         ) : filteredList.length === 0 ? (
@@ -318,14 +363,18 @@ export default function AssociatesPage() {
               NO ASSOCIATE ID CARDS FOUND
             </h3>
             <p className="font-mono text-xs text-neutral-600 mt-1">
-              {searchQuery ? `No badges matched "${searchQuery}". Try a different name or roll number.` : 'No members registered under this category yet.'}
+              {searchQuery ? `No badges matched "${searchQuery}". Try a different name or designation.` : 'No associate badges registered under this group yet.'}
             </p>
-            {searchQuery && (
+            {canManageCards && (
               <button
-                onClick={() => setSearchQuery('')}
-                className="mt-4 font-mono text-xs font-black px-4 py-2 rounded bg-amber-400 text-neutral-950 border-2 border-[#111111] shadow-[2px_2px_0_#111111] active:translate-x-0.5 active:translate-y-0.5"
+                onClick={() => {
+                  setEditingMember(null);
+                  setIsCreatingNew(true);
+                }}
+                className="mt-4 font-mono text-xs font-black px-4 py-2 rounded bg-amber-400 text-neutral-950 border-2 border-[#111111] shadow-[2px_2px_0_#111111] active:translate-x-0.5 active:translate-y-0.5 cursor-pointer inline-flex items-center gap-1.5"
               >
-                CLEAR SEARCH FILTER
+                <Plus className="w-4 h-4" />
+                <span>CREATE FIRST ASSOCIATE BADGE</span>
               </button>
             )}
           </div>
@@ -333,28 +382,46 @@ export default function AssociatesPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-7">
             {filteredList.map((member) => (
               <AssociateIdCard
-                key={member.uid || member.rollNumber}
+                key={member.id || member.rollNumber}
                 member={member}
                 tenantName={associationName}
                 departmentName={departmentName}
                 collegeCode={collegeCode}
-                canEdit={canEditCards}
-                onEdit={() => setEditingMember(member)}
+                canEdit={canManageCards}
+                onEdit={() => {
+                  setEditingMember(member);
+                  setIsCreatingNew(false);
+                }}
+                onDelete={() => handleDeleteCard(member.id, member.name)}
               />
             ))}
           </div>
         )}
       </main>
 
-      {/* Super Admin Edit Modal */}
-      {editingMember && (
+      {/* Dynamic Add / Edit Modal */}
+      {(editingMember || isCreatingNew) && (
         <EditAssociateModal
           member={editingMember}
           tenantName={associationName}
-          onClose={() => setEditingMember(null)}
-          onSaved={(updatedUser) => {
-            setUsers(prev => prev.map(u => u.uid === updatedUser.uid ? updatedUser : u));
+          tenantId={targetTenantId}
+          onClose={() => {
             setEditingMember(null);
+            setIsCreatingNew(false);
+          }}
+          onSaved={(saved) => {
+            setAssociates(prev => {
+              const exists = prev.some(a => a.id === saved.id);
+              if (exists) return prev.map(a => a.id === saved.id ? saved : a);
+              return [saved, ...prev];
+            });
+            setEditingMember(null);
+            setIsCreatingNew(false);
+          }}
+          onDeleted={(id) => {
+            setAssociates(prev => prev.filter(a => a.id !== id));
+            setEditingMember(null);
+            setIsCreatingNew(false);
           }}
         />
       )}

@@ -1,38 +1,47 @@
 import React, { useState } from 'react';
 import { 
-  X, Save, Upload, RefreshCw, Sparkles, Check, AlertCircle, 
-  Linkedin, Award, Briefcase, GraduationCap, Hash, User 
+  X, Save, Upload, RefreshCw, AlertCircle, 
+  Trash2, UserPlus, Sparkles 
 } from 'lucide-react';
-import { UserProfile, UserRole } from '../types';
+import { AssociateMember } from '../types';
 import { uploadToCloudinary } from '../cloudinary';
-import { updateUserProfile } from '../firebase';
+import { createAssociate, updateAssociate, deleteAssociate } from '../firebase';
 
 interface EditAssociateModalProps {
-  member: UserProfile;
+  member?: AssociateMember | null;
   tenantName: string;
+  tenantId: string;
   onClose: () => void;
-  onSaved: (updatedUser: UserProfile) => void;
+  onSaved: (savedAssociate: AssociateMember) => void;
+  onDeleted?: (id: string) => void;
 }
 
 export default function EditAssociateModal({
   member,
   tenantName,
+  tenantId,
   onClose,
-  onSaved
+  onSaved,
+  onDeleted
 }: EditAssociateModalProps) {
-  const [name, setName] = useState(member.name || '');
-  const [rollNumber, setRollNumber] = useState(member.rollNumber || '');
-  const [position, setPosition] = useState(member.position || '');
-  const [role, setRole] = useState<UserRole>(member.role || 'associate');
-  const [year, setYear] = useState(member.year || '3rd Year');
-  const [section, setSection] = useState(member.section || 'A');
-  const [responsibilities, setResponsibilities] = useState(member.responsibilities || '');
-  const [skills, setSkills] = useState(member.skills || '');
-  const [linkedin, setLinkedin] = useState(member.linkedin || '');
-  const [profilePic, setProfilePic] = useState(member.profile_pic || '');
+  const isEditing = Boolean(member && member.id);
+
+  const [name, setName] = useState(member?.name || '');
+  const [rollNumber, setRollNumber] = useState(member?.rollNumber || '');
+  const [position, setPosition] = useState(member?.position || '');
+  const [category, setCategory] = useState<'ALL' | 'EXECUTIVES' | 'TECH' | 'OPERATIONS' | 'STUDENTS'>(
+    member?.category || 'EXECUTIVES'
+  );
+  const [year, setYear] = useState(member?.year || '3rd Year');
+  const [section, setSection] = useState(member?.section || 'A');
+  const [responsibilities, setResponsibilities] = useState(member?.responsibilities || '');
+  const [skills, setSkills] = useState(member?.skills || '');
+  const [linkedin, setLinkedin] = useState(member?.linkedin || '');
+  const [profilePic, setProfilePic] = useState(member?.profile_pic || '');
   
   const [isUploading, setIsUploading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handlePhotoUpload = async (file: File) => {
@@ -61,37 +70,60 @@ export default function EditAssociateModal({
     setError(null);
 
     try {
-      const updates: Partial<UserProfile> = {
+      const cleanRoll = rollNumber.trim().toUpperCase();
+      const cleanTenant = tenantId.trim().toLowerCase();
+      const targetId = member?.id || `assoc_${cleanRoll.toLowerCase() || Date.now()}`;
+
+      const associatePayload: AssociateMember = {
+        id: targetId,
+        tenantId: cleanTenant,
         name: name.trim(),
-        rollNumber: rollNumber.trim().toUpperCase(),
-        position: position.trim(),
-        role: role,
+        rollNumber: cleanRoll,
+        position: position.trim() || 'Associate Member',
+        category: category,
         year: year,
         section: section.trim().toUpperCase(),
         responsibilities: responsibilities.trim(),
         skills: skills.trim(),
         linkedin: linkedin.trim(),
-        profile_pic: profilePic.trim()
+        profile_pic: profilePic.trim(),
+        created_at: member?.created_at || new Date().toISOString()
       };
 
-      // Direct write to the user's authentic account profile document in Firestore
-      await updateUserProfile(member.uid, updates);
+      if (isEditing) {
+        await updateAssociate(targetId, associatePayload);
+      } else {
+        await createAssociate(associatePayload);
+      }
 
-      const mergedUser: UserProfile = {
-        ...member,
-        ...updates
-      };
-
-      onSaved(mergedUser);
+      onSaved(associatePayload);
       onClose();
     } catch (err: any) {
-      console.error('Failed to update associate profile in Firestore:', err);
-      setError(err.message || 'Failed to save changes. Please check permissions.');
+      console.error('Failed to save associate card to Firestore:', err);
+      setError(err.message || 'Failed to save card. Please check permissions.');
       setIsSaving(false);
     }
   };
 
-  const previewAvatar = profilePic || `https://api.dicebear.com/9.x/notionists/svg?seed=${rollNumber || member.uid}`;
+  const handleDelete = async () => {
+    if (!member?.id) return;
+    if (!window.confirm(`Are you sure you want to delete the badge for ${member.name}? This will remove it from the associates showcase.`)) {
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      await deleteAssociate(member.id);
+      if (onDeleted) onDeleted(member.id);
+      onClose();
+    } catch (err: any) {
+      console.error('Failed to delete associate badge:', err);
+      setError(err.message || 'Failed to delete badge.');
+      setIsDeleting(false);
+    }
+  };
+
+  const previewAvatar = profilePic || `https://api.dicebear.com/9.x/notionists/svg?seed=${rollNumber || member?.id || 'assoc'}`;
 
   return (
     <div className="fixed inset-0 z-50 bg-neutral-950/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
@@ -106,10 +138,10 @@ export default function EditAssociateModal({
             </div>
             <div className="min-w-0">
               <h3 className="font-display font-black text-base sm:text-lg text-neutral-950 uppercase tracking-tight truncate">
-                EDIT ASSOCIATE BADGE & PROFILE
+                {isEditing ? 'EDIT ASSOCIATE ID BADGE' : 'ADD NEW ASSOCIATE ID BADGE'}
               </h3>
               <p className="font-mono text-[10px] text-neutral-900 font-bold truncate">
-                Direct sync to user account • {tenantName}
+                Public Showcase Registry • {tenantName}
               </p>
             </div>
           </div>
@@ -202,63 +234,59 @@ export default function EditAssociateModal({
               <label className="block font-mono text-[10px] font-black uppercase text-neutral-600 mb-1">
                 FULL NAME *
               </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Alexander Chen"
-                  required
-                  className="w-full px-3 py-2 bg-white rounded-lg border-2 border-neutral-950 font-sans text-sm font-bold focus:outline-none focus:border-amber-500 shadow-[1.5px_1.5px_0_#000]"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block font-mono text-[10px] font-black uppercase text-neutral-600 mb-1">
-                ROLL NUMBER / SERIAL
-              </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  value={rollNumber}
-                  onChange={(e) => setRollNumber(e.target.value)}
-                  placeholder="21AIT042"
-                  className="w-full px-3 py-2 bg-white rounded-lg border-2 border-neutral-950 font-mono text-sm font-bold uppercase focus:outline-none focus:border-amber-500 shadow-[1.5px_1.5px_0_#000]"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Designation & Role */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block font-mono text-[10px] font-black uppercase text-neutral-600 mb-1">
-                BADGE DESIGNATION / TITLE
-              </label>
               <input
                 type="text"
-                value={position}
-                onChange={(e) => setPosition(e.target.value)}
-                placeholder="President / Technical Head / Lead"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Alexander Chen"
+                required
                 className="w-full px-3 py-2 bg-white rounded-lg border-2 border-neutral-950 font-sans text-sm font-bold focus:outline-none focus:border-amber-500 shadow-[1.5px_1.5px_0_#000]"
               />
             </div>
 
             <div>
               <label className="block font-mono text-[10px] font-black uppercase text-neutral-600 mb-1">
-                SYSTEM ROLE PRIVILEGE
+                ROLL NUMBER / SERIAL
+              </label>
+              <input
+                type="text"
+                value={rollNumber}
+                onChange={(e) => setRollNumber(e.target.value)}
+                placeholder="21AIT042"
+                className="w-full px-3 py-2 bg-white rounded-lg border-2 border-neutral-950 font-mono text-sm font-bold uppercase focus:outline-none focus:border-amber-500 shadow-[1.5px_1.5px_0_#000]"
+              />
+            </div>
+          </div>
+
+          {/* Designation & Category Filter */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block font-mono text-[10px] font-black uppercase text-neutral-600 mb-1">
+                BADGE DESIGNATION / TITLE *
+              </label>
+              <input
+                type="text"
+                value={position}
+                onChange={(e) => setPosition(e.target.value)}
+                placeholder="President / Technical Head / Lead"
+                required
+                className="w-full px-3 py-2 bg-white rounded-lg border-2 border-neutral-950 font-sans text-sm font-bold focus:outline-none focus:border-amber-500 shadow-[1.5px_1.5px_0_#000]"
+              />
+            </div>
+
+            <div>
+              <label className="block font-mono text-[10px] font-black uppercase text-neutral-600 mb-1">
+                CATEGORY FILTER GROUP
               </label>
               <select
-                value={role}
-                onChange={(e) => setRole(e.target.value as UserRole)}
+                value={category}
+                onChange={(e) => setCategory(e.target.value as any)}
                 className="w-full px-3 py-2 bg-white rounded-lg border-2 border-neutral-950 font-mono text-xs font-bold focus:outline-none focus:border-amber-500 shadow-[1.5px_1.5px_0_#000]"
               >
-                <option value="associate">ASSOCIATE (Badge & Ops)</option>
-                <option value="president">PRESIDENT (Executive Lead)</option>
-                <option value="coordinator">COORDINATOR (Event Manager)</option>
-                <option value="admin">ADMIN (Department Administrator)</option>
-                <option value="student">STUDENT (Standard Member)</option>
+                <option value="EXECUTIVES">EXECUTIVES (President / VP / Secretary / Treasurer)</option>
+                <option value="TECH">TECH & DEV (Developers / Engineers)</option>
+                <option value="OPERATIONS">OPS & PR (Events / Social / Operations)</option>
+                <option value="STUDENTS">ALL MEMBERS</option>
               </select>
             </div>
           </div>
@@ -338,32 +366,55 @@ export default function EditAssociateModal({
           </div>
 
           {/* Footer Submit Buttons */}
-          <div className="pt-3 border-t-2 border-neutral-950 flex items-center justify-end gap-2.5">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={isSaving}
-              className="px-4 py-2 rounded-lg bg-white hover:bg-neutral-100 text-neutral-950 font-mono text-xs font-bold border-2 border-neutral-950 shadow-[2px_2px_0_#000] active:translate-x-0.5 active:translate-y-0.5 cursor-pointer"
-            >
-              CANCEL
-            </button>
-            <button
-              type="submit"
-              disabled={isSaving || isUploading}
-              className="inline-flex items-center gap-2 px-5 py-2 rounded-lg bg-amber-400 hover:bg-amber-500 text-neutral-950 font-mono text-xs font-black border-2 border-neutral-950 shadow-[2.5px_2.5px_0_#000] active:translate-x-0.5 active:translate-y-0.5 cursor-pointer disabled:opacity-50"
-            >
-              {isSaving ? (
-                <>
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                  <span>SAVING CHANGES...</span>
-                </>
-              ) : (
-                <>
-                  <Save className="w-3.5 h-3.5" />
-                  <span>SAVE & SYNC TO USER ACCOUNT</span>
-                </>
-              )}
-            </button>
+          <div className="pt-3 border-t-2 border-neutral-950 flex items-center justify-between gap-2.5 flex-wrap">
+            {isEditing && (
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={isDeleting || isSaving}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-rose-100 hover:bg-rose-200 text-rose-900 font-mono text-xs font-bold border-2 border-rose-900 shadow-[1.5px_1.5px_0_#000] active:translate-x-0.5 active:translate-y-0.5 cursor-pointer disabled:opacity-50"
+              >
+                {isDeleting ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>DELETING...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5 text-rose-700" />
+                    <span>DELETE BADGE</span>
+                  </>
+                )}
+              </button>
+            )}
+
+            <div className="flex items-center gap-2.5 ml-auto">
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={isSaving || isDeleting}
+                className="px-4 py-2 rounded-lg bg-white hover:bg-neutral-100 text-neutral-950 font-mono text-xs font-bold border-2 border-neutral-950 shadow-[2px_2px_0_#000] active:translate-x-0.5 active:translate-y-0.5 cursor-pointer"
+              >
+                CANCEL
+              </button>
+              <button
+                type="submit"
+                disabled={isSaving || isUploading || isDeleting}
+                className="inline-flex items-center gap-2 px-5 py-2 rounded-lg bg-amber-400 hover:bg-amber-500 text-neutral-950 font-mono text-xs font-black border-2 border-neutral-950 shadow-[2.5px_2.5px_0_#000] active:translate-x-0.5 active:translate-y-0.5 cursor-pointer disabled:opacity-50"
+              >
+                {isSaving ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>SAVING...</span>
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-3.5 h-3.5" />
+                    <span>{isEditing ? 'UPDATE ASSOCIATE BADGE' : 'CREATE ASSOCIATE BADGE'}</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </form>
       </div>

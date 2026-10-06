@@ -49,6 +49,26 @@ export interface UserProfile {
   created_at: string;
 }
 
+export interface AssociateMember {
+  id: string;
+  tenantId: string;
+  name: string;
+  rollNumber: string;
+  position: string;
+  role?: string;
+  category?: 'ALL' | 'EXECUTIVES' | 'TECH' | 'OPERATIONS' | 'STUDENTS';
+  department?: string;
+  branch?: string;
+  year?: string;
+  section?: string;
+  profile_pic?: string;
+  linkedin?: string;
+  responsibilities?: string;
+  skills?: string;
+  email?: string;
+  created_at?: string;
+}
+
 export interface DepartmentEvent {
   tenantId?: string;
   images?: string[];

@@ -1,15 +1,16 @@
 import React, { useState } from 'react';
-import { Linkedin, Copy, Check, Edit3 } from 'lucide-react';
-import { UserProfile } from '../types';
+import { Linkedin, Copy, Check, Edit3, Trash2 } from 'lucide-react';
+import { UserProfile, AssociateMember } from '../types';
 
 interface AssociateIdCardProps {
-  member: UserProfile;
+  member: AssociateMember | UserProfile;
   tenantName?: string;
   departmentName?: string;
   collegeCode?: string;
   yearBatch?: string;
   canEdit?: boolean;
   onEdit?: () => void;
+  onDelete?: () => void;
 }
 
 // Helper to determine role badge styling in neo-brutalism
@@ -50,7 +51,8 @@ export default function AssociateIdCard({
   departmentName,
   collegeCode = 'AITK 2026',
   canEdit = false,
-  onEdit
+  onEdit,
+  onDelete
 }: AssociateIdCardProps) {
   const [copied, setCopied] = useState(false);
 
@@ -58,8 +60,9 @@ export default function AssociateIdCard({
     ? member.name.replace(/\s*\([A-Za-z0-9]+\)\s*$/, '').trim()
     : (member.rollNumber || 'ASSOCIATE');
 
-  const avatarUrl = member.profile_pic || `https://api.dicebear.com/9.x/notionists/svg?seed=${member.rollNumber || member.uid}`;
-  const fallbackAvatar = `https://api.dicebear.com/9.x/notionists/svg?seed=${member.rollNumber || member.uid}`;
+  const memberKey = member.rollNumber || (member as any).id || (member as any).uid || 'assoc';
+  const avatarUrl = member.profile_pic || `https://api.dicebear.com/9.x/notionists/svg?seed=${memberKey}`;
+  const fallbackAvatar = `https://api.dicebear.com/9.x/notionists/svg?seed=${memberKey}`;
 
   const badgeStyle = getBadgeStyle(member.position, member.role);
 
@@ -97,7 +100,8 @@ export default function AssociateIdCard({
     : (member.skills ? `Focus Areas & Skills: ${member.skills}` : 'Active departmental member driving student association initiatives, technical workshops, and campus community development.');
 
   // Monospace serial code
-  const roll = member.rollNumber ? member.rollNumber.toUpperCase().trim() : member.uid.substring(0, 8).toUpperCase();
+  const memberIdFallback = (member as any).id || (member as any).uid || 'ASSOC';
+  const roll = member.rollNumber ? member.rollNumber.toUpperCase().trim() : memberIdFallback.substring(0, 8).toUpperCase();
   const serialId = `AITK-AIML-${roll}`;
 
   const handleCopyLink = () => {
@@ -237,6 +241,15 @@ export default function AssociateIdCard({
             >
               <Edit3 className="w-3 h-3" />
               <span>EDIT</span>
+            </button>
+          )}
+          {canEdit && onDelete && (
+            <button
+              onClick={onDelete}
+              className="inline-flex items-center gap-1 font-mono text-[10px] sm:text-[11px] font-black px-2 py-1 rounded bg-rose-200 hover:bg-rose-300 text-rose-950 border border-neutral-950 shadow-[1.5px_1.5px_0_#000] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
+              title={`Delete ${cleanName}'s ID Badge`}
+            >
+              <Trash2 className="w-3 h-3 text-rose-700" />
             </button>
           )}
           {member.linkedin && (
