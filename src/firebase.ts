@@ -2109,7 +2109,7 @@ export async function createAnnouncement(announce: Announcement): Promise<void> 
 
 
 // Deletions
-export async function updateEvent(event: DepartmentEvent): Promise<void> {
+export async function updateEvent(event: Partial<DepartmentEvent> & { eventId: string }): Promise<void> {
   const path = `events/${event.eventId}`;
   try {
     const docRef = doc(db, 'events', event.eventId);
@@ -2120,8 +2120,10 @@ export async function updateEvent(event: DepartmentEvent): Promise<void> {
       tenantId: event.tenantId,
       entityType: 'event',
       entityId: event.eventId,
-      entityName: event.title,
-      details: `Updated details for event "${event.title}".`,
+      entityName: event.title || event.eventId,
+      details: event.isRegistrationClosed !== undefined
+        ? `Registration ${event.isRegistrationClosed ? 'closed' : 'opened'} for event "${event.title || event.eventId}".`
+        : `Updated details for event "${event.title || event.eventId}".`,
       severity: 'info'
     });
   } catch (error) {

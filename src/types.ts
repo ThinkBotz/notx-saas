@@ -107,6 +107,7 @@ export interface DepartmentEvent {
   isTeamBased?: boolean;
   maxTeamSize?: number;
   currentRegistrations?: number;
+  isRegistrationClosed?: boolean;
 }
 
 export interface TeamMember {

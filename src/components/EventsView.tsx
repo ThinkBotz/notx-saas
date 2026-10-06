@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Plus, Calendar, MapPin, Clock, Users, X, Check, Award, Download, Tag, FileText, Image as ImageIcon, ChevronLeft, ChevronRight, Sparkles, Layers, RotateCw, Lock, ShieldCheck, Zap, UserMinus, Ticket, GraduationCap } from 'lucide-react';
+import { Search, Plus, Calendar, MapPin, Clock, Users, X, Check, Award, Download, Tag, FileText, Image as ImageIcon, ChevronLeft, ChevronRight, Sparkles, Layers, RotateCw, Lock, Unlock, CheckCircle, ShieldCheck, Zap, UserMinus, Ticket, GraduationCap } from 'lucide-react';
 import ImageUploader from './ImageUploader';
 import FlipCard from './FlipCard';
 import HoldButton from './HoldButton';
@@ -167,6 +167,7 @@ export default function EventsView({
   const [eventReqs, setEventReqs] = useState('');
   const [eventIsTeamBased, setEventIsTeamBased] = useState(false);
   const [eventMaxTeamSize, setEventMaxTeamSize] = useState(4);
+  const [eventIsRegistrationClosed, setEventIsRegistrationClosed] = useState(false);
 
   // Dynamic Coordinator Picker States for Event Form
   const [showCoordPickerModal, setShowCoordPickerModal] = useState(false);
@@ -320,6 +321,7 @@ export default function EventsView({
     setEventReqs('');
     setEventIsTeamBased(false);
     setEventMaxTeamSize(4);
+    setEventIsRegistrationClosed(false);
     setShowAddForm(true);
   };
 
@@ -349,6 +351,7 @@ export default function EventsView({
     setEventReqs(evt.requirements || '');
     setEventIsTeamBased(evt.isTeamBased || false);
     setEventMaxTeamSize(evt.maxTeamSize || 4);
+    setEventIsRegistrationClosed(Boolean(evt.isRegistrationClosed));
     setShowAddForm(true);
   };
 
@@ -416,7 +419,8 @@ export default function EventsView({
           rules: eventRules,
           requirements: eventReqs,
           isTeamBased: eventIsTeamBased,
-          maxTeamSize: eventIsTeamBased ? Number(eventMaxTeamSize) : 1
+          maxTeamSize: eventIsTeamBased ? Number(eventMaxTeamSize) : 1,
+          isRegistrationClosed: eventIsRegistrationClosed
         };
 
         await updateEvent(updatedEvent);
@@ -447,7 +451,8 @@ export default function EventsView({
           requirements: eventReqs,
           createdAt: new Date().toISOString(),
           isTeamBased: eventIsTeamBased,
-          maxTeamSize: eventIsTeamBased ? Number(eventMaxTeamSize) : 1
+          maxTeamSize: eventIsTeamBased ? Number(eventMaxTeamSize) : 1,
+          isRegistrationClosed: eventIsRegistrationClosed
         };
 
         await createEvent(newEvent);
@@ -507,11 +512,61 @@ export default function EventsView({
     return !isNaN(deadline.getTime()) && new Date() > deadline;
   })();
 
+  // Registration Open/Close permissions & toggle helper
+  const canToggleRegistration = (targetEvent?: DepartmentEvent | null): boolean => {
+    if (!targetEvent || !user) return false;
+    // Super Admin
+    if (user.isSuperAdmin || SUPER_ADMIN_EMAILS.includes((user.email || '').toLowerCase())) return true;
+    // Tenant Admin / President
+    if (user.role === 'admin' || user.role === 'president') return true;
+    // Associate with event management powers
+    if (user.role === 'associate' && user.powers?.canManageEvents) return true;
+    // Coordinator assigned to this event
+    if (user.role === 'coordinator' && user.assignedEvents?.includes(targetEvent.eventId)) return true;
+    return false;
+  };
+
+  const handleToggleRegistrationStatus = async (targetEvent: DepartmentEvent, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!canToggleRegistration(targetEvent)) {
+      alert("You do not have permission to change the registration status for this event.");
+      return;
+    }
+    const nextClosed = !targetEvent.isRegistrationClosed;
+    const actionText = nextClosed ? 'CLOSE' : 'RE-OPEN';
+    if (!window.confirm(`Are you sure you want to ${actionText} registrations for "${targetEvent.title}"?`)) {
+      return;
+    }
+    try {
+      await updateEvent({
+        eventId: targetEvent.eventId,
+        tenantId: targetEvent.tenantId || resolvedTenantId,
+        title: targetEvent.title,
+        isRegistrationClosed: nextClosed
+      });
+      if (selectedEvent?.eventId === targetEvent.eventId) {
+        setSelectedEvent({
+          ...selectedEvent,
+          isRegistrationClosed: nextClosed
+        });
+      }
+      refreshEvents();
+    } catch (err) {
+      console.error('Failed to toggle event registration status:', err);
+      alert('Failed to update registration status. Please try again.');
+    }
+  };
+
   const handleRegister = async () => {
     if (!selectedEvent) return;
 
     if (isManagementRole) {
       alert('Administrative and Super Admin accounts are restricted from event participation to preserve audit integrity and accurate attendance records.');
+      return;
+    }
+
+    if (selectedEvent.isRegistrationClosed) {
+      alert('Registration Closed: Event organizers have closed registrations for this event.');
       return;
     }
 
@@ -1115,6 +1170,15 @@ export default function EventsView({
                           </div>
                         )}
 
+                        {event.isRegistrationClosed && (
+                          <div className="absolute top-2.5 right-2.5 z-20 pointer-events-none">
+                            <span className="text-[9.5px] font-mono font-black px-2 py-0.5 rounded shadow-[2px_2px_0_var(--nb-ink)] border border-[var(--nb-ink)] uppercase nb-pill-coral text-white flex items-center gap-1">
+                              <Lock className="w-2.5 h-2.5 stroke-[2.5]" />
+                              REG CLOSED
+                            </span>
+                          </div>
+                        )}
+
                         {/* Front face Bottom content: ONLY event name and date on cover */}
                         <div className="relative z-20 p-2.5 space-y-1.5 pointer-events-none">
                           <div className="inline-flex items-center gap-1.5 text-neutral-900 text-[9.5px] font-mono font-bold nb-pill-yellow px-2 py-0.5 rounded shadow-[2px_2px_0_var(--nb-ink)] border border-[var(--nb-ink)]">
@@ -1230,18 +1294,39 @@ export default function EventsView({
                             </div>
                           ) : null}
 
-                          <button
-                            data-no-flip="true"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedEvent(event);
-                              setEventImageIdx(0);
-                            }}
-                            className="flex-1 py-1.5 px-2.5 rounded bg-[var(--nb-yellow)] hover:bg-[#FFE600] text-black border-2 border-[var(--nb-ink)] text-[10px] font-mono font-bold tracking-tight shadow-[2px_2px_0_var(--nb-ink)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all flex items-center justify-center gap-1 cursor-pointer"
-                          >
-                            <FileText className="w-3.5 h-3.5" />
-                            View Event & Register
-                          </button>
+                          <div className="flex items-center gap-1.5 w-full">
+                            <button
+                              data-no-flip="true"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedEvent(event);
+                                setEventImageIdx(0);
+                              }}
+                              className={`flex-1 py-1.5 px-2.5 rounded border-2 border-[var(--nb-ink)] text-[10px] font-mono font-bold tracking-tight shadow-[2px_2px_0_var(--nb-ink)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all flex items-center justify-center gap-1 cursor-pointer ${
+                                event.isRegistrationClosed
+                                  ? 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+                                  : 'bg-[var(--nb-yellow)] hover:bg-[#FFE600] text-black'
+                              }`}
+                            >
+                              {event.isRegistrationClosed ? <Lock className="w-3.5 h-3.5 text-rose-400" /> : <FileText className="w-3.5 h-3.5" />}
+                              <span>{event.isRegistrationClosed ? 'View (Reg Closed)' : 'View Event & Register'}</span>
+                            </button>
+                            {canToggleRegistration(event) && (
+                              <button
+                                data-no-flip="true"
+                                title={event.isRegistrationClosed ? "Re-open Registration" : "Close Registration"}
+                                onClick={(e) => handleToggleRegistrationStatus(event, e)}
+                                className={`px-2 py-1.5 rounded border-2 border-[var(--nb-ink)] text-[10px] font-mono font-bold tracking-tight shadow-[2px_2px_0_var(--nb-ink)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all flex items-center justify-center gap-1 cursor-pointer ${
+                                  event.isRegistrationClosed
+                                    ? 'bg-emerald-500 hover:bg-emerald-400 text-black'
+                                    : 'bg-rose-500 hover:bg-rose-400 text-white'
+                                }`}
+                              >
+                                {event.isRegistrationClosed ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
+                                <span>{event.isRegistrationClosed ? 'Open' : 'Close'}</span>
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     }
@@ -1305,6 +1390,15 @@ export default function EventsView({
                 <span className="nb-pill-coral text-[9px] font-mono font-bold uppercase hidden sm:inline-block shadow-[1.5px_1.5px_0_var(--nb-ink)]">
                   ★ ADMIT ONE
                 </span>
+                {selectedEvent.isRegistrationClosed ? (
+                  <span className="font-mono text-[9px] font-black px-2 py-0.5 rounded bg-rose-600 text-white border-2 border-[var(--nb-ink)] shadow-[1.5px_1.5px_0_var(--nb-ink)] flex items-center gap-1">
+                    <Lock className="w-2.5 h-2.5" /> REG CLOSED
+                  </span>
+                ) : (
+                  <span className="font-mono text-[9px] font-black px-2 py-0.5 rounded bg-emerald-500 text-black border-2 border-[var(--nb-ink)] shadow-[1.5px_1.5px_0_var(--nb-ink)] flex items-center gap-1">
+                    <CheckCircle className="w-2.5 h-2.5" /> REG OPEN
+                  </span>
+                )}
               </div>
               <button
                 onClick={() => setSelectedEvent(null)}
@@ -1387,6 +1481,52 @@ export default function EventsView({
                 <h3 className="nb-headline text-xl text-[var(--nb-content)] leading-tight">{selectedEvent.title}</h3>
                 <p className="text-xs text-[var(--nb-secondary)] mt-2 leading-relaxed">{selectedEvent.description}</p>
               </div>
+
+              {/* Organizer Controls: Registration Open/Close Gate */}
+              {canToggleRegistration(selectedEvent) && (
+                <div className={`p-3.5 rounded-lg border-2 border-[var(--nb-ink)] shadow-[3px_3px_0_var(--nb-ink)] flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                  selectedEvent.isRegistrationClosed
+                    ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-950 dark:text-rose-100'
+                    : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-950 dark:text-emerald-100'
+                }`}>
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className={`w-8 h-8 rounded border-2 border-[var(--nb-ink)] flex items-center justify-center shrink-0 shadow-[1.5px_1.5px_0_var(--nb-ink)] ${
+                      selectedEvent.isRegistrationClosed ? 'bg-rose-500 text-white' : 'bg-emerald-500 text-black'
+                    }`}>
+                      {selectedEvent.isRegistrationClosed ? <Lock className="w-4 h-4 stroke-[2.5]" /> : <Unlock className="w-4 h-4 stroke-[2.5]" />}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-xs font-black uppercase tracking-wider font-mono">
+                          {selectedEvent.isRegistrationClosed ? 'Registration is Closed' : 'Registration is Active'}
+                        </span>
+                        <span className={`text-[9px] font-mono font-bold px-1.5 py-0.2 rounded border border-current ${
+                          selectedEvent.isRegistrationClosed ? 'bg-rose-200/50 dark:bg-rose-900/50' : 'bg-emerald-200/50 dark:bg-emerald-900/50'
+                        }`}>
+                          Organizer Gate
+                        </span>
+                      </div>
+                      <p className="text-[11px] opacity-80 leading-tight mt-0.5">
+                        {selectedEvent.isRegistrationClosed
+                          ? 'Students cannot register. Click below to reopen registrations.'
+                          : 'Public registrations are currently accepting responses.'}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => handleToggleRegistrationStatus(selectedEvent, e)}
+                    className={`nb-btn px-3 py-1.5 text-xs font-mono font-bold tracking-tight shrink-0 flex items-center justify-center gap-1.5 cursor-pointer shadow-[2px_2px_0_var(--nb-ink)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none ${
+                      selectedEvent.isRegistrationClosed
+                        ? 'bg-emerald-400 hover:bg-emerald-300 text-black'
+                        : 'bg-rose-500 hover:bg-rose-400 text-white'
+                    }`}
+                  >
+                    {selectedEvent.isRegistrationClosed ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
+                    <span>{selectedEvent.isRegistrationClosed ? 'Open Registration' : 'Close Registration'}</span>
+                  </button>
+                </div>
+              )}
 
               {/* Real-time Seats & Capacity Progress Meter */}
               {(() => {
@@ -1919,7 +2059,19 @@ export default function EventsView({
                         </div>
                       )}
 
-                      {isCapacityFull ? (
+                      {selectedEvent.isRegistrationClosed ? (
+                        <div className="bg-rose-50 dark:bg-rose-950/40 p-4 rounded-lg border-2 border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)] text-center space-y-1.5">
+                          <div className="w-9 h-9 mx-auto rounded-full bg-rose-500 text-white flex items-center justify-center border-2 border-[var(--nb-ink)] shadow-[1px_1px_0_var(--nb-ink)]">
+                            <Lock className="w-4 h-4 stroke-[2.5]" />
+                          </div>
+                          <p className="text-xs font-black text-rose-600 dark:text-rose-400 uppercase tracking-wider font-mono">
+                            Registration Closed by Organizer
+                          </p>
+                          <p className="text-[11px] text-[var(--nb-secondary)] max-w-sm mx-auto">
+                            The organizers have closed registrations for this event. No new entries are being accepted at this time.
+                          </p>
+                        </div>
+                      ) : isCapacityFull ? (
 
                         <div className="bg-[var(--nb-surface)] p-3.5 rounded-lg border-2 border-[var(--nb-ink)] text-center space-y-1">
                           <p className="text-xs font-bold text-amber-500 uppercase tracking-wider">
@@ -2473,7 +2625,40 @@ export default function EventsView({
                   )}
                 </div>
 
-                {/* 4. EVENT COORDINATORS */}
+                {/* 4. REGISTRATION AVAILABILITY */}
+                <div className="bg-[var(--nb-surface)] rounded-xl border-2 border-[var(--nb-ink)] shadow-[3px_3px_0_var(--nb-ink)] p-3.5 sm:p-4 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className={`p-1.5 rounded-md border border-[var(--nb-ink)] ${eventIsRegistrationClosed ? 'bg-rose-500 text-white' : 'bg-emerald-500 text-black'}`}>
+                        {eventIsRegistrationClosed ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
+                      </div>
+                      <div>
+                        <span className="block text-[11px] font-black font-mono text-[var(--nb-content)] uppercase tracking-wider">
+                          4. REGISTRATION STATUS
+                        </span>
+                        <span className="text-[10px] text-[var(--nb-secondary)] font-medium">
+                          {eventIsRegistrationClosed
+                            ? 'Registration Closed (Locked for attendees)'
+                            : 'Registration Open (Accepting student entries)'}
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setEventIsRegistrationClosed(!eventIsRegistrationClosed)}
+                      className={`nb-btn px-3 py-1.5 text-xs font-mono font-bold tracking-tight flex items-center gap-1.5 cursor-pointer shadow-[2px_2px_0_var(--nb-ink)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none ${
+                        eventIsRegistrationClosed
+                          ? 'bg-rose-500 hover:bg-rose-400 text-white'
+                          : 'bg-emerald-400 hover:bg-emerald-300 text-black'
+                      }`}
+                    >
+                      {eventIsRegistrationClosed ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
+                      <span>{eventIsRegistrationClosed ? 'Closed' : 'Open'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* 5. EVENT COORDINATORS */}
                 <div
                   className="bg-[var(--nb-surface)] rounded-xl border-2 border-[var(--nb-ink)] shadow-[3px_3px_0_var(--nb-ink)] p-3.5 sm:p-4 space-y-3.5"
                 >
@@ -2481,7 +2666,7 @@ export default function EventsView({
                     <div className="flex items-center gap-2">
                       <Users className="w-3.5 h-3.5 text-[var(--nb-accent)] stroke-[2.5]" />
                       <span className="text-[11px] font-black font-mono text-[var(--nb-content)] uppercase tracking-wider">
-                        4. EVENT COORDINATORS
+                        5. EVENT COORDINATORS
                       </span>
                     </div>
                     <span className="text-[9.5px] font-mono text-[var(--nb-secondary)] font-bold px-2 py-0.5 rounded bg-[var(--nb-surface-accent)] border border-[var(--nb-ink)]">
