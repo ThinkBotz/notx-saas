@@ -52,14 +52,19 @@ const CrowdCanvas = ({ src, rows = 15, cols = 7, className }: CrowdCanvasProps) 
       const renderHeight = peep.height * currentScale;
 
       const isCompact = stage.height < 500;
-      const depthFactor = isCompact ? Math.max(0.4, stage.height / 220) : 1;
-      const offsetY = (isCompact
-        ? 15 - 55 * gsap.parseEase("power2.in")(Math.random())
-        : 100 - 250 * gsap.parseEase("power2.in")(Math.random())) * depthFactor;
+      const isVeryCompact = stage.height < 260;
+      const depthFactor = isVeryCompact ? 0.35 : (isCompact ? Math.max(0.4, stage.height / 220) : 1);
+      const offsetY = isVeryCompact
+        ? -Math.random() * 20 * depthFactor
+        : (isCompact
+          ? 15 - 55 * gsap.parseEase("power2.in")(Math.random())
+          : 100 - 250 * gsap.parseEase("power2.in")(Math.random())) * depthFactor;
 
-      const startY = isCompact
-        ? stage.height - renderHeight * 0.85 + offsetY
-        : stage.height - renderHeight + offsetY;
+      const startY = isVeryCompact
+        ? stage.height - renderHeight * 0.86 + offsetY
+        : (isCompact
+          ? stage.height - renderHeight * 0.85 + offsetY
+          : stage.height - renderHeight + offsetY);
 
       let startX: number;
       let endX: number;
@@ -266,9 +271,11 @@ const CrowdCanvas = ({ src, rows = 15, cols = 7, className }: CrowdCanvasProps) 
       stage.height = canvas.clientHeight;
       if (stage.width === 0 || stage.height === 0) return;
 
-      currentScale = Math.min(0.72, stage.height < 500
-        ? (stage.height * 1.35) / 324
-        : 1.0);
+      currentScale = stage.height < 260
+        ? Math.max(0.40, Math.min(0.55, (stage.height * 0.90) / 324))
+        : Math.min(0.72, stage.height < 500
+          ? (stage.height * 1.35) / 324
+          : 1.0);
 
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       canvas.width = stage.width * dpr;

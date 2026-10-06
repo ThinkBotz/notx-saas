@@ -1375,21 +1375,14 @@ export default function LoginView({
             </div>
           </div>
 
-          {/* Mobile Dedicated Animated Crowd Runway */}
-          <div className="relative w-[calc(100%+2.5rem)] -mx-5 -mb-5 mt-5 h-[120px] pointer-events-none overflow-hidden border-t-2 border-[var(--nb-ink)]/20">
-            <div className="absolute inset-0">
-              <CrowdCanvas
-                src="/images/peeps/all-peeps.png"
-                rows={15}
-                cols={7}
-                className="w-full h-full opacity-100"
-              />
-            </div>
-            {/* Subtle floor guideline */}
-            <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-[var(--nb-ink)]/30" />
-            <div className="absolute bottom-1 right-3 pointer-events-none opacity-45 font-mono text-[8px] font-bold tracking-widest uppercase">
-              CAMPUS LIFE
-            </div>
+          {/* Seamless Mobile Animated Crowd Canvas (Unboxed, transparent, natural flow) */}
+          <div className="relative w-[calc(100%+2.5rem)] -mx-5 -mb-5 mt-4 h-[180px] pointer-events-none overflow-hidden translate-y-[2px]">
+            <CrowdCanvas
+              src="/images/peeps/all-peeps.png"
+              rows={15}
+              cols={7}
+              className="w-full h-full"
+            />
           </div>
         </div>
 
