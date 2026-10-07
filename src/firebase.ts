@@ -55,7 +55,7 @@ import { hashPassword } from './utils/auth';
 
 const app = initializeApp(firebaseConfig);
 export const db = initializeFirestore(app, {
-  experimentalForceLongPolling: true,
+  experimentalAutoDetectLongPolling: true,
 });
 export const auth = getAuth(app);
 
