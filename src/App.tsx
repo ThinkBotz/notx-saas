@@ -156,7 +156,7 @@ export default function App() {
     }
   }, [currentUser]);
 
-  // Synchronize Firebase Auth state with React user profile session
+  // Synchronize Firebase Auth state with React user profile session (for Google SSO sessions)
   useEffect(() => {
     const unsubAuth = onAuthStateChanged(auth, async (fbUser) => {
       if (fbUser) {
@@ -171,11 +171,6 @@ export default function App() {
           } catch (e) {
             console.warn('Silent auth rehydration note:', e);
           }
-        }
-      } else {
-        if (currentUser) {
-          setCurrentUser(null);
-          clearUserSession();
         }
       }
     });
