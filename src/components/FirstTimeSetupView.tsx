@@ -29,8 +29,8 @@ export default function FirstTimeSetupView({ user, onComplete }: FirstTimeSetupV
     e.preventDefault();
     setError('');
 
-    if (!newPassword || !confirmPassword || (!isPasswordResetOnly && (!phone || !year || !section))) {
-      setError('Please fill in all required fields.');
+    if (!newPassword || !confirmPassword) {
+      setError('Please enter and confirm your new password.');
       return;
     }
 
@@ -57,16 +57,16 @@ export default function FirstTimeSetupView({ user, onComplete }: FirstTimeSetupV
       }
 
       // Hash the password securely using salted SHA-256
-      const hashedPassword = await hashPassword(newPassword);
+      const hashedPassword = await hashPassword(newPassword.trim());
 
       const updates: Partial<UserProfile> = {
         password: hashedPassword,
         isFirstLogin: false
       };
       
-      if (!isPasswordResetOnly) {
-        Object.assign(updates, { phone, year, section });
-      }
+      if (phone && phone.trim()) updates.phone = phone.trim();
+      if (year) updates.year = year;
+      if (section && section.trim()) updates.section = section.trim().toUpperCase();
       
       await updateUserProfile(user.uid, updates);
       

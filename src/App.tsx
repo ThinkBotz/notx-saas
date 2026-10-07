@@ -668,7 +668,12 @@ export default function App() {
         <React.Suspense fallback={<ViewLoadingFallback />}>
           <FirstTimeSetupView 
             user={currentUser} 
-            onComplete={(updatedUser) => setCurrentUser(updatedUser)} 
+            onComplete={(updatedUser) => {
+              const cleanUser = { ...updatedUser };
+              if (cleanUser.password) delete cleanUser.password;
+              setCurrentUser(cleanUser);
+              localStorage.setItem('notx_user', JSON.stringify(cleanUser));
+            }} 
           />
         </React.Suspense>
       </>

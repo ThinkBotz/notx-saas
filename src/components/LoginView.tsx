@@ -315,25 +315,24 @@ export default function LoginView({
         }
 
         // Default initial credentials (roll number, Welcome@123, notx@123)
-        if (!isValidPassword) {
+        // Only allow default temporary passwords if user has NOT completed first-time setup yet
+        if (!isValidPassword && (foundUser.isFirstLogin || !foundUser.password)) {
           if (
-            foundUser.isFirstLogin ||
-            !foundUser.password ||
             validCodes.includes(cleanPass) ||
             validCodes.includes(cleanPass.toUpperCase()) ||
-            foundUser.password === cleanPass
+            cleanPass.toUpperCase() === userRoll.toUpperCase()
           ) {
-            if (validCodes.includes(cleanPass) || validCodes.includes(cleanPass.toUpperCase()) || cleanPass.toUpperCase() === userRoll.toUpperCase()) {
-              isValidPassword = true;
-              const hashed = await hashPassword(cleanPass);
-              await updateUserProfile(foundUser.uid, { password: hashed }).catch(() => {});
-            }
+            isValidPassword = true;
           }
         }
       }
 
       if (!isValidPassword) {
-        setError('Invalid password. Default password is your Roll Number or Welcome@123.');
+        if (foundUser.role === 'student' && !foundUser.isFirstLogin && foundUser.password) {
+          setError('Invalid password. Please enter the password you set during initial setup.');
+        } else {
+          setError('Invalid password. Default password is your Roll Number or Welcome@123.');
+        }
         setLoading(false);
         return;
       }
@@ -400,11 +399,15 @@ export default function LoginView({
             const chkUp = await verifyPassword(cleanPass.toUpperCase(), matchedUser.password);
             isStudentPassValid = chkUp.isValid;
           }
-          if (!isStudentPassValid && (matchedUser.password === cleanPass || validCodes.includes(cleanPass))) {
-            isStudentPassValid = true;
-          }
-        } else {
-          if (validCodes.includes(cleanPass) || validCodes.includes(cleanPass.toUpperCase())) {
+        }
+
+        // Only allow default codes if on first login or no password stored
+        if (!isStudentPassValid && (matchedUser.isFirstLogin || !matchedUser.password)) {
+          if (
+            validCodes.includes(cleanPass) ||
+            validCodes.includes(cleanPass.toUpperCase()) ||
+            cleanPass.toUpperCase() === userRoll.toUpperCase()
+          ) {
             isStudentPassValid = true;
           }
         }
@@ -415,7 +418,11 @@ export default function LoginView({
           onLoginSuccess(matchedUser);
           return;
         } else {
-          setError('Invalid password for student account. Default password is your Roll Number or Welcome@123.');
+          if (matchedUser.isFirstLogin || !matchedUser.password) {
+            setError('Invalid password for student account. Default password is your Roll Number or Welcome@123.');
+          } else {
+            setError('Invalid password for student account. Please enter the password you set during initial setup.');
+          }
           setLoading(false);
           return;
         }
